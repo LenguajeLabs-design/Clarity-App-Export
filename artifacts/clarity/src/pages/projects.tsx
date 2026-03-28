@@ -139,13 +139,13 @@ export default function Projects() {
               placeholder="Next step to take..."
               className="text-lg p-4 bg-background border border-border/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
-            {/* Area selector — 4 options but laid out 2×2 to avoid a single row of 4 */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* Area selector — shown as a scrollable single row so only ~3 are visible at a time */}
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 no-scrollbar">
               {AREAS.map(({ value, label }) => (
                 <button
                   key={value}
                   onClick={() => setDraft({ ...draft, area: value })}
-                  className={`py-3 text-sm font-bold rounded-2xl transition-all border ${
+                  className={`flex-shrink-0 min-h-[48px] px-5 text-sm font-bold rounded-2xl transition-all border whitespace-nowrap ${
                     draft.area === value
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'bg-background text-muted-foreground border-border/50 hover:border-border'

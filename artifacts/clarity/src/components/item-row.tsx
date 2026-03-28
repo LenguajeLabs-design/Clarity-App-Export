@@ -16,7 +16,7 @@ export function ItemRow({ item }: { item: CapturedItem }) {
       <button
         onClick={() => completeItem(item.id)}
         aria-label="Mark as done"
-        className="w-8 h-8 rounded-full border-2 border-primary/40 flex items-center justify-center mr-4 flex-shrink-0 hover:bg-primary/10 hover:border-primary transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10"
+        className="w-12 h-12 rounded-full border-2 border-primary/40 flex items-center justify-center mr-3 flex-shrink-0 hover:bg-primary/10 hover:border-primary transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10"
       >
         <svg
           className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity"

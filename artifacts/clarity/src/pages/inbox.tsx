@@ -21,18 +21,18 @@ const AREA_CHOICES: { label: string; value: AreaOfLife }[] = [
   { label: "Home or personal", value: "home" },
 ];
 
-// Step 3a — first 3 action choices
+// Step 3a — first 3 action choices (primary, positive actions)
 const ACTION_PRIMARY: { label: string; id: string }[] = [
-  { id: "today",   label: "Do it today ✓" },
-  { id: "schedule",label: "Schedule it 📅" },
-  { id: "more",    label: "Other options →" },
+  { id: "today",   label: "Do it today" },
+  { id: "schedule",label: "Schedule it" },
+  { id: "project", label: "Add to a project" },
 ];
 
-// Step 3b — second set of 3 choices (revealed when "Other options" tapped)
+// Step 3b — second set of 3 choices (shown via "See more" link)
 const ACTION_SECONDARY: { label: string; id: string }[] = [
-  { id: "project", label: "Add to a project 📂" },
-  { id: "later",   label: "Not yet 💤" },
-  { id: "delete",  label: "Toss it 🗑" },
+  { id: "later",  label: "Not yet — save for later" },
+  { id: "delete", label: "Toss it" },
+  { id: "back",   label: "← Back to main options" },
 ];
 
 // — Triage draft state —————————————————————————————————
@@ -104,18 +104,18 @@ export default function Inbox() {
       finishTriage({ timing: 'today', scheduledDate: format(new Date(), 'yyyy-MM-dd') });
     } else if (id === 'schedule') {
       setSubStep('schedule-when');
-    } else if (id === 'more') {
-      setSubStep('action-secondary');
+    } else if (id === 'project') {
+      setSubStep('project-which');
     }
   };
 
   const handleActionSecondary = (id: string) => {
-    if (id === 'project') {
-      setSubStep('project-which');
-    } else if (id === 'later') {
+    if (id === 'later') {
       finishTriage({ timing: 'later' });
     } else if (id === 'delete') {
       finishTriage({ isDeleted: true });
+    } else if (id === 'back') {
+      setSubStep('action-primary');
     }
   };
 
@@ -250,7 +250,7 @@ export default function Inbox() {
           </motion.div>
         )}
 
-        {/* Step 3a — Primary actions: Do it today / Schedule it / Other options (3 choices) */}
+        {/* Step 3a — Primary actions: Do it today / Schedule it / Add to a project (3 choices) */}
         {step === 3 && subStep === 'action-primary' && (
           <motion.div
             key="step3a"
@@ -265,10 +265,17 @@ export default function Inbox() {
                 </ChoiceBtn>
               ))}
             </div>
+            {/* "Not yet" and "Toss it" are accessible via a compact text link — keeps max 3 buttons */}
+            <button
+              onClick={() => setSubStep('action-secondary')}
+              className="mt-6 min-h-[48px] text-muted-foreground font-semibold text-base hover:text-foreground transition-colors py-3 text-center active:scale-95"
+            >
+              Not yet or toss it →
+            </button>
           </motion.div>
         )}
 
-        {/* Step 3b — Secondary actions: Add to a project / Not yet / Toss it (3 choices) */}
+        {/* Step 3b — Not yet / Toss it / Back (3 choices) */}
         {step === 3 && subStep === 'action-secondary' && (
           <motion.div
             key="step3b"
@@ -283,12 +290,6 @@ export default function Inbox() {
                 </ChoiceBtn>
               ))}
             </div>
-            <button
-              onClick={() => setSubStep('action-primary')}
-              className="mt-6 text-muted-foreground font-semibold text-lg hover:text-foreground transition-colors py-3 text-center active:scale-95"
-            >
-              ← Back
-            </button>
           </motion.div>
         )}
 
