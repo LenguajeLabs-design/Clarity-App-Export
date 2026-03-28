@@ -1,0 +1,12 @@
+packages:
+  "framer-motion": "For smooth transitions in flows"
+  "date-fns": "For date formatting"
+  "uuid": "For generating unique IDs in local storage"
+  "clsx": "Class utility"
+  "tailwind-merge": "Class utility"
+
+images: []
+
+notes:
+  - "The app relies 100% on localStorage. No backend or API calls are used."
+  - "The design uses a warm, calm neutral palette optimized for ADHD."
