@@ -17,9 +17,10 @@ export interface CapturedItem {
   isCompleted: boolean;
   scheduledDate: string | null;
   projectId: string | null;
-  // AI-ready placeholder fields (unused in MVP)
-  aiCategory?: ItemType | null;
-  aiSuggestions?: string[] | null;
+  // Next visible action identified during triage
+  nextAction: string | null;
+  // Who this is waiting on (for delegated tasks)
+  waitingOn: string | null;
 }
 
 // A concrete sub-task that belongs to a Project
@@ -29,8 +30,6 @@ export interface Task {
   text: string;
   isCompleted: boolean;
   createdAt: string;
-  // AI-ready placeholder
-  aiSuggested?: boolean;
 }
 
 export interface Project {
@@ -41,8 +40,6 @@ export interface Project {
   nextAction: string;
   status: ProjectStatus;
   createdAt: string;
-  // AI-ready placeholder
-  aiNextAction?: string | null;
 }
 
 export interface UserSettings {
@@ -56,6 +53,7 @@ export interface AppData {
   projects: Project[];
   settings: UserSettings;
   addItem: (text: string) => void;
+  addItemsBatch: (texts: string[]) => void;
   updateItem: (id: string, updates: Partial<CapturedItem>) => void;
   completeItem: (id: string) => void;
   addProject: (p: Omit<Project, 'id' | 'createdAt'>) => void;

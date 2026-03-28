@@ -3,73 +3,89 @@ import { useLocalStorage } from "./use-local-storage";
 import { CapturedItem, Project, UserSettings, AppData } from "./types";
 import { v4 as uuidv4 } from 'uuid';
 
-// Generate a date string relative to today
 function daysFromNow(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
 }
 
+const BLANK_ITEM = (text: string): CapturedItem => ({
+  id: uuidv4(),
+  text,
+  createdAt: new Date().toISOString(),
+  type: null,
+  area: null,
+  timing: null,
+  isTriaged: false,
+  isDeleted: false,
+  isPriority: false,
+  isQuickWin: false,
+  isCompleted: false,
+  scheduledDate: null,
+  projectId: null,
+  nextAction: null,
+  waitingOn: null,
+});
+
 const SEED_ITEMS: CapturedItem[] = [
   {
-    id: uuidv4(), text: "Call the dentist about Maya's appointment",
-    createdAt: new Date().toISOString(), type: null, area: null, timing: null,
-    isTriaged: false, isDeleted: false, isPriority: false, isQuickWin: false,
-    isCompleted: false, scheduledDate: null, projectId: null,
+    ...BLANK_ITEM("Call the dentist about Maya's appointment"),
   },
   {
-    id: uuidv4(), text: "Reply to parent emails about field trip",
-    createdAt: new Date().toISOString(), type: 'task', area: 'work', timing: 'today',
-    isTriaged: true, isDeleted: false, isPriority: true, isQuickWin: false,
-    isCompleted: false, scheduledDate: daysFromNow(0), projectId: null,
+    ...BLANK_ITEM("Reply to parent emails about field trip"),
+    type: 'task', area: 'work', timing: 'today',
+    isTriaged: true, isPriority: true,
+    scheduledDate: daysFromNow(0),
+    nextAction: 'Open email and reply to 3 waiting parents',
   },
   {
-    id: uuidv4(), text: "Pick up more printer paper",
-    createdAt: new Date().toISOString(), type: 'task', area: 'home', timing: 'this-week',
-    isTriaged: true, isDeleted: false, isPriority: false, isQuickWin: true,
-    isCompleted: false, scheduledDate: daysFromNow(2), projectId: null,
+    ...BLANK_ITEM("Pick up more printer paper"),
+    type: 'task', area: 'home', timing: 'this-week',
+    isTriaged: true, isQuickWin: true,
+    scheduledDate: daysFromNow(2),
+    nextAction: 'Stop at the office supply store',
   },
   {
-    id: uuidv4(), text: "Plan family vacation — summer",
-    createdAt: new Date().toISOString(), type: null, area: null, timing: null,
-    isTriaged: false, isDeleted: false, isPriority: false, isQuickWin: false,
-    isCompleted: false, scheduledDate: null, projectId: null,
+    ...BLANK_ITEM("Plan family vacation — summer"),
   },
   {
-    id: uuidv4(), text: "Submit report card grades by Friday",
-    createdAt: new Date().toISOString(), type: 'task', area: 'work', timing: 'today',
-    isTriaged: true, isDeleted: false, isPriority: true, isQuickWin: false,
-    isCompleted: false, scheduledDate: daysFromNow(0), projectId: null,
+    ...BLANK_ITEM("Submit report card grades by Friday"),
+    type: 'task', area: 'work', timing: 'today',
+    isTriaged: true, isPriority: true,
+    scheduledDate: daysFromNow(0),
+    nextAction: 'Open gradebook and finalize remaining 5 students',
   },
   {
-    id: uuidv4(), text: "Call Mom back",
-    createdAt: new Date().toISOString(), type: null, area: null, timing: null,
-    isTriaged: false, isDeleted: false, isPriority: false, isQuickWin: false,
-    isCompleted: false, scheduledDate: null, projectId: null,
+    ...BLANK_ITEM("Call Mom back"),
   },
   {
-    id: uuidv4(), text: "Reschedule dentist for myself",
-    createdAt: new Date().toISOString(), type: 'task', area: 'personal', timing: 'this-week',
-    isTriaged: true, isDeleted: false, isPriority: false, isQuickWin: false,
-    isCompleted: false, scheduledDate: daysFromNow(3), projectId: null,
+    ...BLANK_ITEM("Reschedule dentist for myself"),
+    type: 'task', area: 'personal', timing: 'this-week',
+    isTriaged: true,
+    scheduledDate: daysFromNow(3),
+    nextAction: 'Find the number and call',
   },
   {
-    id: uuidv4(), text: "Buy birthday gift for Jake",
-    createdAt: new Date().toISOString(), type: 'task', area: 'family', timing: 'this-week',
-    isTriaged: true, isDeleted: false, isPriority: false, isQuickWin: true,
-    isCompleted: false, scheduledDate: daysFromNow(1), projectId: null,
+    ...BLANK_ITEM("Buy birthday gift for Jake"),
+    type: 'task', area: 'family', timing: 'this-week',
+    isTriaged: true, isQuickWin: true,
+    scheduledDate: daysFromNow(1),
+    nextAction: 'Order something on Amazon',
   },
   {
-    id: uuidv4(), text: "Team meeting notes to send",
-    createdAt: new Date().toISOString(), type: 'task', area: 'work', timing: 'today',
-    isTriaged: true, isDeleted: false, isPriority: false, isQuickWin: true,
-    isCompleted: false, scheduledDate: daysFromNow(0), projectId: null,
+    ...BLANK_ITEM("Waiting on admin approval for field trip budget"),
+    type: 'task', area: 'work', timing: 'this-week',
+    isTriaged: true,
+    waitingOn: 'Principal Garcia',
+    scheduledDate: daysFromNow(2),
+    nextAction: 'Follow up if no response by Thursday',
   },
   {
-    id: uuidv4(), text: "Sign permission slip for field trip",
-    createdAt: new Date().toISOString(), type: 'task', area: 'work', timing: 'today',
-    isTriaged: true, isDeleted: false, isPriority: true, isQuickWin: false,
-    isCompleted: false, scheduledDate: daysFromNow(0), projectId: null,
+    ...BLANK_ITEM("Sign permission slip for field trip"),
+    type: 'task', area: 'work', timing: 'today',
+    isTriaged: true, isPriority: true,
+    scheduledDate: daysFromNow(0),
+    nextAction: 'Print, sign, and put in Maya\'s folder',
   },
 ];
 
@@ -99,7 +115,7 @@ const SEED_PROJECTS: Project[] = [
 const AppDataContext = createContext<AppData | null>(null);
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
-  const [seeded, setSeeded] = useLocalStorage<boolean>('clarity_seeded', false);
+  const [seeded, setSeeded] = useLocalStorage<boolean>('clarity_seeded_v2', false);
   const [items, setItems] = useLocalStorage<CapturedItem[]>('clarity_items', []);
   const [projects, setProjects] = useLocalStorage<Project[]>('clarity_projects', []);
   const [settings, setSettings] = useLocalStorage<UserSettings>('clarity_settings', {
@@ -115,13 +131,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, [seeded, setItems, setProjects, setSeeded]);
 
   const addItem = (text: string) => {
-    const newItem: CapturedItem = {
-      id: uuidv4(), text, createdAt: new Date().toISOString(),
-      type: null, area: null, timing: null,
-      isTriaged: false, isDeleted: false, isPriority: false, isQuickWin: false,
-      isCompleted: false, scheduledDate: null, projectId: null,
-    };
-    setItems((prev) => [newItem, ...prev]);
+    setItems((prev) => [BLANK_ITEM(text), ...prev]);
+  };
+
+  const addItemsBatch = (texts: string[]) => {
+    const newItems = texts.filter((t) => t.trim()).map((t) => BLANK_ITEM(t.trim()));
+    setItems((prev) => [...newItems, ...prev]);
   };
 
   const updateItem = (id: string, updates: Partial<CapturedItem>) => {
@@ -146,6 +161,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     projects,
     settings,
     addItem,
+    addItemsBatch,
     updateItem,
     completeItem,
     addProject,

@@ -91,6 +91,32 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
 
+### `artifacts/clarity` (`@workspace/clarity`)
+
+Mobile-first ADHD task manager app built with React + Vite. Pure localStorage, no backend.
+
+**Features:**
+- **Quick Capture** (`/`) — single-item textarea; "Brain dump mode" for rapid multi-item capture (numbered list, Enter to add lines, batch save to inbox)
+- **Inbox Triage** (`/inbox`) — 5-step triage wizard (one item at a time, max 3 choices per screen):
+  1. Type: task / project / event or note
+  2. Multi-step check for tasks (suggests converting to project if multi-step)
+  3. Area of life: Work / Family / Home or personal
+  4. Next visible action (text input — be specific)
+  5. Timing: Today / This week / Later
+  6. Waiting on: prompts for a person's name if delegated
+  7. Action: Do it today / Schedule it / Add to a project / Not yet / Toss it
+- **Today** (`/today`) — "Pick top 3" interactive priority picker (full-screen, max 3 selectable); "Waiting on" section; "Top 3 Priorities" section
+- **Projects** (`/projects`) — cards with status segmented controls; inline next-action editing
+- **Upcoming** (`/upcoming`) — grouped by day using date-fns
+- **Review** (`/review`) — 5-step weekly review wizard: inbox → projects → waiting on → pick priorities → weekly checklist
+- **Settings** (`/settings`) — 3 accessibility toggles (bigger text, high contrast, less motion) applied as CSS classes on `<html>`
+
+**Data model key fields on `CapturedItem`:** `waitingOn: string | null`, `nextAction: string | null`, `isPriority: boolean`
+
+**Tech:** React 18, Vite, Tailwind CSS, framer-motion, date-fns, uuid, shadcn/ui, wouter
+
+**Seed data:** 10 items (teacher/parent persona), 4 projects — uses `clarity_seeded_v2` localStorage key
+
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
