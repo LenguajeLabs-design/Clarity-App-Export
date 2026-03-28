@@ -65,4 +65,6 @@ export interface AppData {
   addProject: (p: Omit<Project, 'id' | 'createdAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   updateSettings: (s: UserSettings) => void;
+  /** Replace the entire local dataset at once (used after GitHub sync pull) */
+  replaceAllData: (items: CapturedItem[], projects: Project[], settings: UserSettings) => void;
 }

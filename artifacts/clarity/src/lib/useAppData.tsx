@@ -95,6 +95,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Replace the full dataset at once — used after GitHub sync detects a newer
+  // remote version. Updates both React state and localStorage atomically.
+  const replaceAllData = (
+    newItems: CapturedItem[],
+    newProjects: Project[],
+    newSettings: UserSettings,
+  ) => {
+    setItems(newItems);
+    setProjects(newProjects);
+    setSettings(newSettings);
+  };
+
   const value: AppData = {
     items,
     projects,
@@ -107,6 +119,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     addProject,
     updateProject,
     updateSettings: setSettings,
+    replaceAllData,
   };
 
   return (

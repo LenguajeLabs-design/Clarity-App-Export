@@ -2,65 +2,71 @@ import { useEffect } from "react";
 import { BottomNav } from "./bottom-nav";
 import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
+import { useGitHubSync } from "@/lib/useGitHubSync";
 import { MigrationBanner } from "./migration-banner";
+import { GitHubSyncButton, LocalOnlyBadge } from "./github-sync-button";
 import { Link, useLocation } from "wouter";
-import { PenLine, Cloud, CloudOff, Loader2, AlertCircle } from "lucide-react";
+import { PenLine, Cloud, Loader2, AlertCircle } from "lucide-react";
 import appIcon from "/icon.png";
 
-function SyncBadge() {
-  const { status, lastSyncedAt, isSupabaseConfigured } = useSyncStatus();
+/**
+ * Shows the right sync indicator based on what's configured:
+ *  - GitHub configured  → tappable Sync button with live status
+ *  - Only Supabase      → small Supabase status badge
+ *  - Neither            → "Local only" label
+ */
+function SyncArea() {
+  const { config: githubConfig } = useGitHubSync();
+  const { status: supabaseStatus, lastSyncedAt, isSupabaseConfigured } = useSyncStatus();
 
-  if (!isSupabaseConfigured) {
-    return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
-        <CloudOff className="w-3 h-3" />
-        Local only
-      </span>
-    );
+  // GitHub takes priority — it has an interactive sync button
+  if (githubConfig) {
+    return <GitHubSyncButton />;
   }
 
-  if (status === 'syncing') {
-    return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Loader2 className="w-3 h-3 animate-spin" />
-        Syncing…
-      </span>
-    );
+  // Supabase is configured — show its passive status
+  if (isSupabaseConfigured) {
+    if (supabaseStatus === 'syncing') {
+      return (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Syncing…
+        </span>
+      );
+    }
+    if (supabaseStatus === 'synced') {
+      const timeStr = lastSyncedAt
+        ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : null;
+      return (
+        <span
+          className="flex items-center gap-1 text-xs text-muted-foreground"
+          title={timeStr ? `Last synced at ${timeStr}` : 'Synced'}
+        >
+          <Cloud className="w-3 h-3 text-green-500" />
+          Synced
+        </span>
+      );
+    }
+    if (supabaseStatus === 'error') {
+      return (
+        <span className="flex items-center gap-1 text-xs text-destructive">
+          <AlertCircle className="w-3 h-3" />
+          Sync error
+        </span>
+      );
+    }
   }
 
-  if (status === 'synced') {
-    const timeStr = lastSyncedAt
-      ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      : null;
-    return (
-      <span className="flex items-center gap-1 text-xs text-muted-foreground" title={timeStr ? `Last synced at ${timeStr}` : 'Synced'}>
-        <Cloud className="w-3 h-3 text-green-500" />
-        Synced
-      </span>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <span className="flex items-center gap-1 text-xs text-destructive">
-        <AlertCircle className="w-3 h-3" />
-        Sync error
-      </span>
-    );
-  }
-
-  return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground/60">
-      <CloudOff className="w-3 h-3" />
-      Local only
-    </span>
-  );
+  // Nothing configured — show "Local only"
+  return <LocalOnlyBadge />;
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { settings } = useAppData();
   const [location] = useLocation();
 
+  // Apply accessibility settings as CSS classes on the html element
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle('large-text', settings.largeText);
@@ -82,8 +88,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <img src={appIcon} alt="Clarity" className="w-6 h-6 rounded-[6px] shadow-sm object-cover" />
               <span className="text-sm font-semibold tracking-wide font-display">Clarity</span>
             </Link>
-            <div className="flex items-center gap-3">
-              <SyncBadge />
+            <div className="flex items-center gap-2">
+              <SyncArea />
               <Link
                 href="/"
                 className="flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary/80 transition-colors py-2 px-3 rounded-xl hover:bg-primary/5 active:scale-95"
