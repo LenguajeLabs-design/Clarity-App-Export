@@ -2,6 +2,13 @@ import { createContext, useContext } from "react";
 import { useLocalStorage } from "./use-local-storage";
 import { CapturedItem, Project, UserSettings, AppData } from "./types";
 import { v4 as uuidv4 } from 'uuid';
+import { useSyncStatus } from './useSyncStatus';
+import {
+  syncItem,
+  syncItems,
+  syncProject,
+  syncProjects,
+} from './supabase-sync';
 
 export const BLANK_ITEM = (text: string): CapturedItem => ({
   id: uuidv4(),
@@ -30,13 +37,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     largeText: false, highContrast: false, reducedMotion: false,
   });
 
+  const { userId, setSyncing, setSynced, setSyncError } = useSyncStatus();
+
   const addItem = (text: string) => {
-    setItems((prev) => [BLANK_ITEM(text), ...prev]);
+    const newItem = BLANK_ITEM(text);
+    setItems((prev) => [newItem, ...prev]);
+    void syncItem(newItem, userId, setSyncing, setSynced, setSyncError);
   };
 
   const addItemsBatch = (texts: string[]) => {
     const newItems = texts.filter((t) => t.trim()).map((t) => BLANK_ITEM(t.trim()));
     setItems((prev) => [...newItems, ...prev]);
+    void syncItems(newItems, userId, setSyncing, setSynced, setSyncError);
   };
 
   const addItemsBatchStructured = (structured: Array<{
@@ -54,10 +66,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ...(s.timing ? { timing: s.timing } : {}),
       }));
     setItems((prev) => [...newItems, ...prev]);
+    void syncItems(newItems, userId, setSyncing, setSynced, setSyncError);
   };
 
   const updateItem = (id: string, updates: Partial<CapturedItem>) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
+    const currentItem = items.find((i) => i.id === id);
+    if (currentItem) {
+      void syncItem({ ...currentItem, ...updates }, userId, setSyncing, setSynced, setSyncError);
+    }
   };
 
   const completeItem = (id: string) => {
@@ -67,10 +84,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const addProject = (p: Omit<Project, 'id' | 'createdAt'>) => {
     const newProject: Project = { ...p, id: uuidv4(), createdAt: new Date().toISOString() };
     setProjects((prev) => [newProject, ...prev]);
+    void syncProject(newProject, userId, setSyncing, setSynced, setSyncError);
   };
 
   const updateProject = (id: string, updates: Partial<Project>) => {
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    const currentProject = projects.find((p) => p.id === id);
+    if (currentProject) {
+      void syncProject({ ...currentProject, ...updates }, userId, setSyncing, setSynced, setSyncError);
+    }
   };
 
   const value: AppData = {

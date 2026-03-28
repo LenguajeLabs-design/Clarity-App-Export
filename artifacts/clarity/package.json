@@ -75,6 +75,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.100.1",
     "uuid": "^13.0.0"
   }
 }
