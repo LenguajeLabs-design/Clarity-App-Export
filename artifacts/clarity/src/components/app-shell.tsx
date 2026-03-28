@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { BottomNav } from "./bottom-nav";
 import { useAppData } from "@/lib/useAppData";
 import { Link, useLocation } from "wouter";
-import { Sparkles, PenLine } from "lucide-react";
+import { PenLine } from "lucide-react";
+import appIcon from "/icon.png";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { settings } = useAppData();
@@ -29,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href="/"
               className="flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors"
             >
-              <Sparkles className="w-4 h-4" />
+              <img src={appIcon} alt="Clarity" className="w-6 h-6 rounded-[6px] shadow-sm object-cover" />
               <span className="text-sm font-semibold tracking-wide font-display">Clarity</span>
             </Link>
             {/* Quick-capture shortcut from any non-home screen */}

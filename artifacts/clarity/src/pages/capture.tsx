@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAppData } from "@/lib/useAppData";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Zap, Plus, Trash2, Loader2, X, CheckCircle2 } from "lucide-react";
+import appIcon from "/icon.png";
 import { motion, AnimatePresence } from "framer-motion";
 import { CapturedItem, ItemType, AreaOfLife, Timing } from "@/lib/types";
 import { AREA_COLOR, AREA_LABEL, TIMING_COLOR, TIMING_LABEL, TYPE_LABEL } from "@/lib/colors";
@@ -172,9 +173,7 @@ export default function Capture() {
     >
       {/* Logo */}
       <div className="flex items-center mb-10 mt-4">
-        <div className="w-10 h-10 rounded-[14px] bg-primary/10 flex items-center justify-center text-primary mr-3 shadow-inner">
-          <Sparkles className="w-5 h-5" />
-        </div>
+        <img src={appIcon} alt="Clarity" className="w-10 h-10 rounded-[14px] mr-3 shadow-sm object-cover" />
         <h1 className="text-xl font-display font-semibold tracking-tight text-foreground/80">Clarity</h1>
       </div>
 
