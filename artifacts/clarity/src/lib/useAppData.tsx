@@ -1,15 +1,9 @@
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext } from "react";
 import { useLocalStorage } from "./use-local-storage";
 import { CapturedItem, Project, UserSettings, AppData } from "./types";
 import { v4 as uuidv4 } from 'uuid';
 
-function daysFromNow(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
-}
-
-const BLANK_ITEM = (text: string): CapturedItem => ({
+export const BLANK_ITEM = (text: string): CapturedItem => ({
   id: uuidv4(),
   text,
   createdAt: new Date().toISOString(),
@@ -27,108 +21,14 @@ const BLANK_ITEM = (text: string): CapturedItem => ({
   waitingOn: null,
 });
 
-const SEED_ITEMS: CapturedItem[] = [
-  {
-    ...BLANK_ITEM("Call the dentist about Maya's appointment"),
-  },
-  {
-    ...BLANK_ITEM("Reply to parent emails about field trip"),
-    type: 'task', area: 'work', timing: 'today',
-    isTriaged: true, isPriority: true,
-    scheduledDate: daysFromNow(0),
-    nextAction: 'Open email and reply to 3 waiting parents',
-  },
-  {
-    ...BLANK_ITEM("Pick up more printer paper"),
-    type: 'task', area: 'home', timing: 'this-week',
-    isTriaged: true, isQuickWin: true,
-    scheduledDate: daysFromNow(2),
-    nextAction: 'Stop at the office supply store',
-  },
-  {
-    ...BLANK_ITEM("Plan family vacation — summer"),
-  },
-  {
-    ...BLANK_ITEM("Submit report card grades by Friday"),
-    type: 'task', area: 'work', timing: 'today',
-    isTriaged: true, isPriority: true,
-    scheduledDate: daysFromNow(0),
-    nextAction: 'Open gradebook and finalize remaining 5 students',
-  },
-  {
-    ...BLANK_ITEM("Call Mom back"),
-  },
-  {
-    ...BLANK_ITEM("Reschedule dentist for myself"),
-    type: 'task', area: 'personal', timing: 'this-week',
-    isTriaged: true,
-    scheduledDate: daysFromNow(3),
-    nextAction: 'Find the number and call',
-  },
-  {
-    ...BLANK_ITEM("Buy birthday gift for Jake"),
-    type: 'task', area: 'family', timing: 'this-week',
-    isTriaged: true, isQuickWin: true,
-    scheduledDate: daysFromNow(1),
-    nextAction: 'Order something on Amazon',
-  },
-  {
-    ...BLANK_ITEM("Waiting on admin approval for field trip budget"),
-    type: 'task', area: 'work', timing: 'this-week',
-    isTriaged: true,
-    waitingOn: 'Principal Garcia',
-    scheduledDate: daysFromNow(2),
-    nextAction: 'Follow up if no response by Thursday',
-  },
-  {
-    ...BLANK_ITEM("Sign permission slip for field trip"),
-    type: 'task', area: 'work', timing: 'today',
-    isTriaged: true, isPriority: true,
-    scheduledDate: daysFromNow(0),
-    nextAction: 'Print, sign, and put in Maya\'s folder',
-  },
-];
-
-const SEED_PROJECTS: Project[] = [
-  {
-    id: uuidv4(), title: "Parent Workshop", area: "work",
-    nextAction: "Finalize slide deck", status: "in-progress",
-    createdAt: new Date().toISOString(), dueDate: daysFromNow(7),
-  },
-  {
-    id: uuidv4(), title: "Report Cards", area: "work",
-    nextAction: "Finish 3 remaining narratives", status: "in-progress",
-    dueDate: daysFromNow(7), createdAt: new Date().toISOString(),
-  },
-  {
-    id: uuidv4(), title: "Move Classroom", area: "work",
-    nextAction: "Sort books into keep/donate piles", status: "not-started",
-    createdAt: new Date().toISOString(), dueDate: null,
-  },
-  {
-    id: uuidv4(), title: "Family Summer Travel", area: "family",
-    nextAction: "Research destinations — mountains or beach?", status: "not-started",
-    createdAt: new Date().toISOString(), dueDate: null,
-  },
-];
-
 const AppDataContext = createContext<AppData | null>(null);
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
-  const [seeded, setSeeded] = useLocalStorage<boolean>('clarity_seeded_v2', false);
   const [items, setItems] = useLocalStorage<CapturedItem[]>('clarity_items', []);
   const [projects, setProjects] = useLocalStorage<Project[]>('clarity_projects', []);
   const [settings, setSettings] = useLocalStorage<UserSettings>('clarity_settings', {
     largeText: false, highContrast: false, reducedMotion: false,
   });
-
-  useEffect(() => {
-    if (!seeded) {
-      setItems(SEED_ITEMS);
-      setProjects(SEED_PROJECTS);
-      setSeeded(true);
-    }
-  }, [seeded, setItems, setProjects, setSeeded]);
 
   const addItem = (text: string) => {
     setItems((prev) => [BLANK_ITEM(text), ...prev]);
@@ -136,6 +36,23 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const addItemsBatch = (texts: string[]) => {
     const newItems = texts.filter((t) => t.trim()).map((t) => BLANK_ITEM(t.trim()));
+    setItems((prev) => [...newItems, ...prev]);
+  };
+
+  const addItemsBatchStructured = (structured: Array<{
+    text: string;
+    type?: CapturedItem['type'];
+    area?: CapturedItem['area'];
+    timing?: CapturedItem['timing'];
+  }>) => {
+    const newItems = structured
+      .filter((s) => s.text.trim())
+      .map((s) => ({
+        ...BLANK_ITEM(s.text.trim()),
+        ...(s.type ? { type: s.type } : {}),
+        ...(s.area ? { area: s.area } : {}),
+        ...(s.timing ? { timing: s.timing } : {}),
+      }));
     setItems((prev) => [...newItems, ...prev]);
   };
 
@@ -162,6 +79,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     settings,
     addItem,
     addItemsBatch,
+    addItemsBatchStructured,
     updateItem,
     completeItem,
     addProject,

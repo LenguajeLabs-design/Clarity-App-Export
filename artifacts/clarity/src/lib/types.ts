@@ -54,6 +54,12 @@ export interface AppData {
   settings: UserSettings;
   addItem: (text: string) => void;
   addItemsBatch: (texts: string[]) => void;
+  addItemsBatchStructured: (structured: Array<{
+    text: string;
+    type?: ItemType | null;
+    area?: AreaOfLife | null;
+    timing?: Timing | null;
+  }>) => void;
   updateItem: (id: string, updates: Partial<CapturedItem>) => void;
   completeItem: (id: string) => void;
   addProject: (p: Omit<Project, 'id' | 'createdAt'>) => void;
