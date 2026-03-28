@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Sparkles, Zap, Plus, Trash2, Loader2, X, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CapturedItem, ItemType, AreaOfLife, Timing } from "@/lib/types";
+import { AREA_COLOR, AREA_LABEL, TIMING_COLOR, TIMING_LABEL, TYPE_LABEL } from "@/lib/colors";
 
 type BrainDumpTab = "lines" | "ai";
 
@@ -15,16 +16,6 @@ interface ParsedTask {
   timing: "today" | "this-week" | "later";
   keep: boolean;
 }
-
-const AREA_LABELS: Record<string, string> = {
-  work: "Work", home: "Home", family: "Family", personal: "Personal",
-};
-const TIMING_LABELS: Record<string, string> = {
-  today: "Today", "this-week": "This week", later: "Later",
-};
-const TYPE_LABELS: Record<string, string> = {
-  task: "Task", project: "Project", note: "Note",
-};
 
 export default function Capture() {
   const { addItem, addItemsBatch, addItemsBatchStructured, items } = useAppData();
@@ -443,14 +434,33 @@ export default function Capture() {
                                   {task.text}
                                 </p>
                                 <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary/80 font-medium">
-                                    {TYPE_LABELS[task.type] ?? task.type}
-                                  </span>
+                                  {/* Type pill — neutral */}
                                   <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-                                    {AREA_LABELS[task.area] ?? task.area}
+                                    {TYPE_LABEL[task.type] ?? task.type}
                                   </span>
-                                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-                                    {TIMING_LABELS[task.timing] ?? task.timing}
+                                  {/* Area dot + label — colored dot, no colored background */}
+                                  <span
+                                    className="text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
+                                    style={{
+                                      backgroundColor: `${AREA_COLOR[task.area] ?? "#7A8599"}18`,
+                                      color: AREA_COLOR[task.area] ?? "#7A8599",
+                                    }}
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full inline-block flex-shrink-0"
+                                      style={{ backgroundColor: AREA_COLOR[task.area] ?? "#7A8599" }}
+                                    />
+                                    {AREA_LABEL[task.area] ?? task.area}
+                                  </span>
+                                  {/* Timing pill — muted amber for today, gray for later */}
+                                  <span
+                                    className="text-xs px-2 py-0.5 rounded-full font-medium"
+                                    style={{
+                                      backgroundColor: `${TIMING_COLOR[task.timing] ?? "#7A8599"}18`,
+                                      color: TIMING_COLOR[task.timing] ?? "#7A8599",
+                                    }}
+                                  >
+                                    {TIMING_LABEL[task.timing] ?? task.timing}
                                   </span>
                                 </div>
                               </div>

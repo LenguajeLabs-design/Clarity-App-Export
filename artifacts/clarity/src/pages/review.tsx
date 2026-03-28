@@ -116,13 +116,13 @@ export default function Review() {
                     <p className="text-sm text-primary font-semibold mb-5">Due {friendlyDate(p.dueDate)}</p>
                   )}
                   {!p.dueDate && <div className="mb-5" />}
-                  <div className="flex gap-2 p-1 bg-accent/30 rounded-2xl">
+                  <div className="flex gap-2 p-1 bg-muted/40 rounded-2xl">
                     {(['not-started', 'in-progress', 'done'] as const).map((s, idx) => (
                       <button
                         key={s}
                         className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${
                           p.status === s
-                            ? s === 'done' ? 'bg-green-500 text-white shadow-sm' : 'bg-background shadow-sm text-foreground'
+                            ? 'bg-background shadow-sm text-foreground'
                             : 'text-muted-foreground'
                         }`}
                         onClick={() => updateProject(p.id, { status: s })}

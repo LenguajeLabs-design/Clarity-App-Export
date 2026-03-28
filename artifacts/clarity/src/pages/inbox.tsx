@@ -5,6 +5,7 @@ import { InboxIcon, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CapturedItem, ItemType, AreaOfLife, Timing, Project } from "@/lib/types";
 import { format, addDays } from "date-fns";
+import { AREA_COLOR } from "@/lib/colors";
 
 // ─── Choice definitions (max 3 visible per step) ─────────────────────────────
 
@@ -24,10 +25,17 @@ const MULTISTEP_CHOICES: { label: string; id: string }[] = [
 
 // Step 2 — Area of life (Work / Family / Home or personal)
 const AREA_CHOICES: { label: string; value: AreaOfLife }[] = [
-  { label: "Work",           value: "work" },
-  { label: "Family",         value: "family" },
+  { label: "Work",             value: "work" },
+  { label: "Family",           value: "family" },
   { label: "Home or personal", value: "home" },
 ];
+
+const AREA_CHOICE_DOT = ({ value }: { value: AreaOfLife }) => (
+  <span
+    className="w-3 h-3 rounded-full flex-shrink-0 inline-block mr-2"
+    style={{ backgroundColor: AREA_COLOR[value] ?? "#7A8599" }}
+  />
+);
 
 // Step 3 — Timing
 const TIMING_CHOICES: { label: string; value: Timing }[] = [
@@ -356,7 +364,10 @@ export default function Inbox() {
           <motion.div key="area" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
             <p className="text-xl font-semibold text-muted-foreground mb-2">What area of life does this belong to?</p>
             {AREA_CHOICES.map(({ label, value }) => (
-              <ChoiceBtn key={value} onClick={() => handleArea(value)}>{label}</ChoiceBtn>
+              <ChoiceBtn key={value} onClick={() => handleArea(value)}>
+                <AREA_CHOICE_DOT value={value} />
+                {label}
+              </ChoiceBtn>
             ))}
           </motion.div>
         )}

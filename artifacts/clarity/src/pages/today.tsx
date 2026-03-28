@@ -5,6 +5,10 @@ import { Sun, Star } from "lucide-react";
 import { CapturedItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import { AREA_COLOR } from "@/lib/colors";
+
+// Muted amber for "waiting on" — conveys patience, not alarm
+const WAITING_COLOR = "#C07A3A";
 
 export default function Today() {
   const { items, updateItem } = useAppData();
@@ -15,9 +19,8 @@ export default function Today() {
   );
 
   const priorities = todayItems.filter((i: CapturedItem) => i.isPriority);
-  const waitingOn = todayItems.filter((i: CapturedItem) => i.waitingOn);
-  const rest = todayItems.filter((i: CapturedItem) => !i.isPriority && !i.waitingOn);
-
+  const waitingOn  = todayItems.filter((i: CapturedItem) => i.waitingOn);
+  const rest       = todayItems.filter((i: CapturedItem) => !i.isPriority && !i.waitingOn);
   const priorityCount = priorities.length;
 
   const togglePriority = (item: CapturedItem) => {
@@ -30,10 +33,10 @@ export default function Today() {
 
   const allEmpty = todayItems.length === 0;
 
-  // ─── Priority picker modal ───────────────────────────────────────────────
+  // ─── Priority picker full-screen ─────────────────────────────────────────
   if (pickingPriorities) {
-    const pickable = todayItems.filter((i: CapturedItem) => !i.isCompleted);
-    const selected = pickable.filter((i: CapturedItem) => i.isPriority);
+    const pickable  = todayItems.filter((i: CapturedItem) => !i.isCompleted);
+    const selected  = pickable.filter((i: CapturedItem) => i.isPriority);
     const remaining = 3 - selected.length;
 
     return (
@@ -50,27 +53,33 @@ export default function Today() {
         <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-3 pb-4">
           {pickable.map((i: CapturedItem) => {
             const isSelected = i.isPriority;
-            const disabled = !isSelected && priorityCount >= 3;
+            const disabled   = !isSelected && priorityCount >= 3;
+            const areaColor  = i.area ? AREA_COLOR[i.area] : undefined;
             return (
               <motion.button
                 key={i.id}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => !disabled && togglePriority(i)}
-                className={`w-full text-left flex items-start gap-4 p-5 rounded-2xl border-2 transition-all min-h-[72px] ${
+                className={`w-full text-left flex items-start gap-4 p-5 rounded-2xl border-2 transition-all min-h-[72px] overflow-hidden ${
                   isSelected
-                    ? 'border-primary bg-primary/5 shadow-md'
+                    ? 'border-primary/50 bg-card shadow-md'
                     : disabled
-                    ? 'border-border/40 bg-card opacity-40 cursor-default'
+                    ? 'border-border/30 bg-card opacity-35 cursor-default'
                     : 'border-border/60 bg-card hover:border-border cursor-pointer'
                 }`}
               >
+                {/* Area accent strip */}
                 <div
-                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${
-                    isSelected ? 'border-primary bg-primary' : 'border-border/80'
+                  className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-2xl"
+                  style={{ backgroundColor: isSelected && areaColor ? areaColor : 'transparent' }}
+                />
+                <div
+                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${
+                    isSelected ? 'border-primary bg-primary' : 'border-border/60'
                   }`}
                 >
                   {isSelected && (
-                    <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   )}
@@ -102,7 +111,7 @@ export default function Today() {
     );
   }
 
-  // ─── Main Today view ─────────────────────────────────────────────────────
+  // ─── Main Today view ──────────────────────────────────────────────────────
   return (
     <div className="p-6 animate-in fade-in duration-500">
       <div className="flex items-end justify-between mb-10">
@@ -117,9 +126,9 @@ export default function Today() {
       </div>
 
       {allEmpty && (
-        <div className="flex flex-col items-center justify-center mt-24 text-center opacity-70">
-          <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-8">
-            <Sun className="w-12 h-12 text-primary" />
+        <div className="flex flex-col items-center justify-center mt-24 text-center opacity-60">
+          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-8">
+            <Sun className="w-10 h-10 text-muted-foreground" />
           </div>
           <p className="text-2xl font-medium font-display leading-tight text-foreground">
             Nothing here yet.<br />A clear day is a good day.
@@ -131,8 +140,8 @@ export default function Today() {
         {priorities.length > 0 && (
           <motion.div key="priorities" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-10">
             <div className="flex items-center gap-2 mb-4 pl-1">
-              <Star className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Top 3 priorities</h2>
+              <Star className="w-3.5 h-3.5 text-primary/70" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Top 3 priorities</h2>
             </div>
             <div className="flex flex-col gap-3">
               {priorities.map((i: CapturedItem) => <ItemRow key={i.id} item={i} />)}
@@ -142,17 +151,20 @@ export default function Today() {
 
         {waitingOn.length > 0 && (
           <motion.div key="waiting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-10">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 pl-1">
-              Waiting on
-            </h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4 pl-1">Waiting on</h2>
             <div className="flex flex-col gap-3">
               {waitingOn.map((i: CapturedItem) => (
                 <div
                   key={i.id}
-                  className="flex items-start gap-4 bg-card p-5 rounded-2xl border border-border/60 shadow-sm min-h-[72px]"
+                  className="flex items-start gap-4 bg-card p-5 rounded-2xl border border-border/60 shadow-sm min-h-[72px] overflow-hidden relative"
                 >
-                  <div className="w-12 h-12 rounded-full border-2 border-amber-400/60 bg-amber-50 flex items-center justify-center flex-shrink-0">
-                    <span className="text-amber-500 font-bold text-lg">⏳</span>
+                  {/* Amber left accent — calm, not alarming */}
+                  <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-2xl" style={{ backgroundColor: WAITING_COLOR }} />
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-base"
+                    style={{ backgroundColor: `rgba(192,122,58,0.10)`, color: WAITING_COLOR }}
+                  >
+                    ⏳
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-lg font-medium leading-snug">{i.text}</p>
@@ -171,7 +183,7 @@ export default function Today() {
 
         {rest.length > 0 && (
           <motion.div key="rest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-10">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 pl-1">Everything else</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4 pl-1">Everything else</h2>
             <div className="flex flex-col gap-3">
               {rest.map((i: CapturedItem) => <ItemRow key={i.id} item={i} />)}
             </div>

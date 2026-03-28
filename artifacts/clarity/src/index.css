@@ -57,60 +57,76 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
 
-  /* Warm Neutral Palette for Calm ADHD UX */
-  --background: 40 20% 97%; /* #faf9f5 warm off-white */
-  --foreground: 30 10% 20%; /* soft dark gray/brown */
-  
+  /* ── Base palette ─────────────────────────────────────────────────── */
+  /* Light neutral background — off-white with a whisper of warm gray  */
+  --background: 220 20% 97%;      /* #f4f5f8 */
+  --foreground: 220 15% 18%;      /* near-black with cool cast */
+
   --card: 0 0% 100%;
-  --card-foreground: 30 10% 20%;
-  --card-border: 40 10% 92%;
-  
+  --card-foreground: 220 15% 18%;
+  --card-border: 220 12% 91%;
+
   --popover: 0 0% 100%;
-  --popover-foreground: 30 10% 20%;
-  --popover-border: 40 10% 92%;
-  
-  --primary: 195 36% 47%; /* calm soft teal/blue */
+  --popover-foreground: 220 15% 18%;
+  --popover-border: 220 12% 91%;
+
+  /* Primary — calm navy-blue used for interactive controls only */
+  --primary: 214 48% 47%;
   --primary-foreground: 0 0% 100%;
-  
-  --secondary: 40 10% 90%;
-  --secondary-foreground: 30 10% 20%;
-  
-  --muted: 40 10% 92%;
-  --muted-foreground: 30 5% 45%;
-  
-  --accent: 40 20% 90%;
-  --accent-foreground: 30 10% 20%;
-  
-  --destructive: 0 60% 60%;
+
+  --secondary: 220 12% 92%;
+  --secondary-foreground: 220 15% 18%;
+
+  --muted: 220 12% 93%;
+  --muted-foreground: 220 8% 48%;
+
+  --accent: 220 14% 92%;
+  --accent-foreground: 220 15% 18%;
+
+  /* Destructive — soft red only used for delete/error, never decoration */
+  --destructive: 0 55% 55%;
   --destructive-foreground: 0 0% 100%;
-  
-  --border: 40 10% 85%;
-  --input: 40 10% 85%;
-  --ring: 195 36% 47%;
-  
+
+  --border: 220 12% 88%;
+  --input: 220 12% 88%;
+  --ring: 214 48% 47%;
+
   --radius: 1rem;
+
+  /* ── Semantic area colors — DOTS & ACCENTS ONLY, not backgrounds ── */
+  /* Work:     soft blue                                              */
+  --area-work:     74 124 180;   /* #4A7CB4 */
+  /* Home:     muted sage green                                       */
+  --area-home:     78 144 112;   /* #4E9070 */
+  /* Family:   soft lavender-purple                                   */
+  --area-family:   123 106 175;  /* #7B6AAF */
+  /* Personal: neutral gray-blue                                      */
+  --area-personal: 122 133 153;  /* #7A8599 */
+
+  /* Today accent — muted amber (urgency, not alarm)                  */
+  --timing-today: 192 122 58;    /* #C07A3A */
 }
 
-/* High Contrast Mode Override */
+/* ── High Contrast ──────────────────────────────────────────────────── */
 html.high-contrast {
   --background: 0 0% 100%;
   --foreground: 0 0% 5%;
   --card: 0 0% 100%;
   --card-foreground: 0 0% 5%;
-  --primary: 220 70% 30%;
+  --primary: 214 70% 32%;
   --muted: 0 0% 90%;
   --muted-foreground: 0 0% 20%;
-  --border: 0 0% 70%;
+  --border: 0 0% 65%;
 }
 
-/* Large Text Mode Override */
+/* ── Large Text ─────────────────────────────────────────────────────── */
 html.large-text {
   font-size: 112%;
 }
 
-/* Reduce Motion Override */
-html.reduce-motion *, 
-html.reduce-motion *::before, 
+/* ── Reduce Motion ──────────────────────────────────────────────────── */
+html.reduce-motion *,
+html.reduce-motion *::before,
 html.reduce-motion *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
@@ -131,16 +147,11 @@ html.reduce-motion *::after {
   }
 }
 
-/* Hide scrollbar for a cleaner mobile look */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
-}
+/* Hide scrollbar */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* Utilities for interaction elevation */
+/* Interaction elevation */
 @layer utilities {
   .hover-elevate:not(.no-default-hover-elevate),
   .active-elevate-2:not(.no-default-active-elevate) {
