@@ -10,7 +10,14 @@ import appIcon from "/icon.png";
 function SyncBadge() {
   const { status, lastSyncedAt, isSupabaseConfigured } = useSyncStatus();
 
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground/50">
+        <CloudOff className="w-3 h-3" />
+        Local only
+      </span>
+    );
+  }
 
   if (status === 'syncing') {
     return (
