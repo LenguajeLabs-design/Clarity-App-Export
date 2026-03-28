@@ -3,10 +3,13 @@ import { useAppData } from "@/lib/useAppData";
 import { Button } from "@/components/ui/button";
 import { InboxIcon, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CapturedItem, ItemType, AreaOfLife, Timing } from "@/lib/types";
+import { CapturedItem, ItemType, AreaOfLife, Timing, Project } from "@/lib/types";
+import { format, addDays } from "date-fns";
 
-// Each triage step shows exactly 3 choices
-const TYPE_CHOICES: { label: string; value: ItemType | 'note' }[] = [
+// — Step definitions —————————————————————————————————
+// Each step shows exactly 3 choices (max 3 visible at once, ADHD-friendly constraint)
+
+const TYPE_CHOICES: { label: string; value: ItemType }[] = [
   { label: "Something to do", value: "task" },
   { label: "A project", value: "project" },
   { label: "An event or note", value: "note" },
@@ -18,31 +21,43 @@ const AREA_CHOICES: { label: string; value: AreaOfLife }[] = [
   { label: "Home or personal", value: "home" },
 ];
 
-const TIMING_CHOICES: { label: string; value: Timing }[] = [
-  { label: "Today", value: "today" },
-  { label: "This week", value: "this-week" },
-  { label: "Not yet", value: "later" },
+// Step 3a — first 3 action choices
+const ACTION_PRIMARY: { label: string; id: string }[] = [
+  { id: "today",   label: "Do it today ✓" },
+  { id: "schedule",label: "Schedule it 📅" },
+  { id: "more",    label: "Other options →" },
 ];
 
-const ACTION_CHOICES: { label: string; updates: Partial<CapturedItem> }[] = [
-  { label: "Do it today ✓", updates: { timing: "today", isPriority: false } },
-  { label: "Not yet 💤", updates: { timing: "later" } },
-  { label: "Toss it 🗑", updates: { isDeleted: true } },
+// Step 3b — second set of 3 choices (revealed when "Other options" tapped)
+const ACTION_SECONDARY: { label: string; id: string }[] = [
+  { id: "project", label: "Add to a project 📂" },
+  { id: "later",   label: "Not yet 💤" },
+  { id: "delete",  label: "Toss it 🗑" },
 ];
 
+// — Triage draft state —————————————————————————————————
 interface TriageDraft {
   type?: ItemType;
   area?: AreaOfLife;
   timing?: Timing;
 }
 
+type SubStep = 'action-primary' | 'action-secondary' | 'schedule-when' | 'project-which';
+
+const SCHEDULE_CHOICES: { label: string; daysAhead: number }[] = [
+  { label: "Tomorrow",    daysAhead: 1 },
+  { label: "In 3 days",  daysAhead: 3 },
+  { label: "Next week",  daysAhead: 7 },
+];
+
 export default function Inbox() {
-  const { items, updateItem } = useAppData();
+  const { items, projects, updateItem } = useAppData();
   const untriaged = items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted);
 
   const [triageStarted, setTriageStarted] = useState(false);
   const [index, setIndex] = useState(0);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [subStep, setSubStep] = useState<SubStep>('action-primary');
   const [draft, setDraft] = useState<TriageDraft>({});
 
   const item = untriaged[index];
@@ -51,12 +66,18 @@ export default function Inbox() {
     setTriageStarted(false);
     setIndex(0);
     setStep(1);
+    setSubStep('action-primary');
     setDraft({});
   };
 
-  const nextStep = (updates: Partial<TriageDraft>) => {
-    setDraft((prev) => ({ ...prev, ...updates }));
-    setStep((s) => s + 1);
+  const advanceStep = (updates: Partial<TriageDraft>) => {
+    const next = { ...draft, ...updates };
+    setDraft(next);
+    if (step === 1) setStep(2);
+    else if (step === 2) {
+      setStep(3);
+      setSubStep('action-primary');
+    }
   };
 
   const finishTriage = (actionUpdates: Partial<CapturedItem>) => {
@@ -69,7 +90,7 @@ export default function Inbox() {
     });
     setDraft({});
     setStep(1);
-
+    setSubStep('action-primary');
     if (index + 1 >= untriaged.length) {
       resetTriage();
     } else {
@@ -77,6 +98,40 @@ export default function Inbox() {
     }
   };
 
+  // — "What to do?" action handler —————————————————————
+  const handleActionPrimary = (id: string) => {
+    if (id === 'today') {
+      finishTriage({ timing: 'today', scheduledDate: format(new Date(), 'yyyy-MM-dd') });
+    } else if (id === 'schedule') {
+      setSubStep('schedule-when');
+    } else if (id === 'more') {
+      setSubStep('action-secondary');
+    }
+  };
+
+  const handleActionSecondary = (id: string) => {
+    if (id === 'project') {
+      setSubStep('project-which');
+    } else if (id === 'later') {
+      finishTriage({ timing: 'later' });
+    } else if (id === 'delete') {
+      finishTriage({ isDeleted: true });
+    }
+  };
+
+  const handleSchedule = (daysAhead: number) => {
+    const date = addDays(new Date(), daysAhead);
+    finishTriage({
+      timing: daysAhead <= 1 ? 'today' : daysAhead <= 3 ? 'this-week' : 'this-week',
+      scheduledDate: format(date, 'yyyy-MM-dd'),
+    });
+  };
+
+  const handleProjectAssign = (project: Project) => {
+    finishTriage({ projectId: project.id, type: 'task', timing: 'this-week' });
+  };
+
+  // — Landing screen ————————————————————————————————————
   if (!triageStarted || !item) {
     return (
       <div className="flex flex-col h-full items-center justify-center p-6 text-center animate-in fade-in duration-500">
@@ -112,9 +167,7 @@ export default function Inbox() {
     );
   }
 
-  // 3-dot progress indicator
-  const TOTAL_STEPS = 4;
-
+  // — Shared choice button ———————————————————————————————
   const ChoiceBtn = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => (
     <Button
       variant="outline"
@@ -125,9 +178,12 @@ export default function Inbox() {
     </Button>
   );
 
+  // Step progress: steps 1 / 2 / 3 (step 3 has sub-steps but counts as one progress dot)
+  const TOTAL_STEPS = 3;
+
   return (
     <div className="fixed inset-0 z-[60] bg-background flex flex-col p-6 max-w-[430px] mx-auto shadow-2xl">
-      {/* Header */}
+      {/* Progress dots + skip */}
       <div className="flex justify-between items-center mb-8 mt-4">
         <div className="flex gap-2">
           {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
@@ -165,12 +221,10 @@ export default function Inbox() {
             initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
             className="flex-1 flex flex-col"
           >
-            <p className="text-xl font-semibold text-muted-foreground mb-6">
-              What kind of thing is this?
-            </p>
+            <p className="text-xl font-semibold text-muted-foreground mb-6">What kind of thing is this?</p>
             <div className="flex flex-col gap-4">
               {TYPE_CHOICES.map(({ label, value }) => (
-                <ChoiceBtn key={value} onClick={() => nextStep({ type: value as ItemType })}>
+                <ChoiceBtn key={value} onClick={() => advanceStep({ type: value })}>
                   {label}
                 </ChoiceBtn>
               ))}
@@ -185,12 +239,10 @@ export default function Inbox() {
             initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
             className="flex-1 flex flex-col"
           >
-            <p className="text-xl font-semibold text-muted-foreground mb-6">
-              What part of life?
-            </p>
+            <p className="text-xl font-semibold text-muted-foreground mb-6">What part of life?</p>
             <div className="flex flex-col gap-4">
               {AREA_CHOICES.map(({ label, value }) => (
-                <ChoiceBtn key={value} onClick={() => nextStep({ area: value })}>
+                <ChoiceBtn key={value} onClick={() => advanceStep({ area: value })}>
                   {label}
                 </ChoiceBtn>
               ))}
@@ -198,19 +250,17 @@ export default function Inbox() {
           </motion.div>
         )}
 
-        {/* Step 3 — When does it matter? (3 choices) */}
-        {step === 3 && (
+        {/* Step 3a — Primary actions: Do it today / Schedule it / Other options (3 choices) */}
+        {step === 3 && subStep === 'action-primary' && (
           <motion.div
-            key="step3"
+            key="step3a"
             initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
             className="flex-1 flex flex-col"
           >
-            <p className="text-xl font-semibold text-muted-foreground mb-6">
-              When does it matter?
-            </p>
+            <p className="text-xl font-semibold text-muted-foreground mb-6">What do you want to do with it?</p>
             <div className="flex flex-col gap-4">
-              {TIMING_CHOICES.map(({ label, value }) => (
-                <ChoiceBtn key={value} onClick={() => nextStep({ timing: value })}>
+              {ACTION_PRIMARY.map(({ id, label }) => (
+                <ChoiceBtn key={id} onClick={() => handleActionPrimary(id)}>
                   {label}
                 </ChoiceBtn>
               ))}
@@ -218,23 +268,75 @@ export default function Inbox() {
           </motion.div>
         )}
 
-        {/* Step 4 — What to do with it? (3 choices) */}
-        {step === 4 && (
+        {/* Step 3b — Secondary actions: Add to a project / Not yet / Toss it (3 choices) */}
+        {step === 3 && subStep === 'action-secondary' && (
           <motion.div
-            key="step4"
+            key="step3b"
             initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
             className="flex-1 flex flex-col"
           >
-            <p className="text-xl font-semibold text-muted-foreground mb-6">
-              What to do with it?
-            </p>
+            <p className="text-xl font-semibold text-muted-foreground mb-6">What do you want to do with it?</p>
             <div className="flex flex-col gap-4">
-              {ACTION_CHOICES.map(({ label, updates }) => (
-                <ChoiceBtn key={label} onClick={() => finishTriage(updates)}>
+              {ACTION_SECONDARY.map(({ id, label }) => (
+                <ChoiceBtn key={id} onClick={() => handleActionSecondary(id)}>
                   {label}
                 </ChoiceBtn>
               ))}
             </div>
+            <button
+              onClick={() => setSubStep('action-primary')}
+              className="mt-6 text-muted-foreground font-semibold text-lg hover:text-foreground transition-colors py-3 text-center active:scale-95"
+            >
+              ← Back
+            </button>
+          </motion.div>
+        )}
+
+        {/* Step 3c — Schedule when? Tomorrow / In 3 days / Next week (3 choices) */}
+        {step === 3 && subStep === 'schedule-when' && (
+          <motion.div
+            key="step3c"
+            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+            className="flex-1 flex flex-col"
+          >
+            <p className="text-xl font-semibold text-muted-foreground mb-6">When should this happen?</p>
+            <div className="flex flex-col gap-4">
+              {SCHEDULE_CHOICES.map(({ label, daysAhead }) => (
+                <ChoiceBtn key={label} onClick={() => handleSchedule(daysAhead)}>
+                  {label}
+                </ChoiceBtn>
+              ))}
+            </div>
+            <button
+              onClick={() => setSubStep('action-primary')}
+              className="mt-6 text-muted-foreground font-semibold text-lg hover:text-foreground transition-colors py-3 text-center active:scale-95"
+            >
+              ← Back
+            </button>
+          </motion.div>
+        )}
+
+        {/* Step 3d — Which project? (show up to 3 projects, then remainder) */}
+        {step === 3 && subStep === 'project-which' && (
+          <motion.div
+            key="step3d"
+            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+            className="flex-1 flex flex-col"
+          >
+            <p className="text-xl font-semibold text-muted-foreground mb-6">Which project?</p>
+            <div className="flex flex-col gap-4">
+              {projects.slice(0, 3).map((p: Project) => (
+                <ChoiceBtn key={p.id} onClick={() => handleProjectAssign(p)}>
+                  {p.title}
+                </ChoiceBtn>
+              ))}
+            </div>
+            <button
+              onClick={() => setSubStep('action-secondary')}
+              className="mt-6 text-muted-foreground font-semibold text-lg hover:text-foreground transition-colors py-3 text-center active:scale-95"
+            >
+              ← Back
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
