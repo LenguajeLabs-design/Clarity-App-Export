@@ -1,0 +1,129 @@
+I want to refactor my existing app into a mobile-first ADHD-friendly external brain called Clarity.
+
+Do not build a generic productivity app. Do not build a coaching chatbot. Do not add cluttered dashboards.
+
+Core problem:
+I am a very busy adult with ADHD. My ideas, tasks, projects, reminders, and commitments are scattered across paper notes, sticky notes, Google Keep, Word docs, SharePoint folders, and random chats. Because they are fragmented, I cannot trust my system and I keep reinventing the wheel.
+
+The app’s main job:
+Help me capture everything quickly, consolidate it into one trusted place, triage it later with minimal friction, and surface what matters now.
+
+Primary user:
+A busy teacher, father, and husband with ADHD who remembers things at the wrong time, loses ideas across systems, and needs a calm, low-friction way to capture, organize, and retrieve life.
+
+Product principles:
+- Capture first, organize later
+- One decision at a time
+- Minimal cognitive load
+- Large tap targets
+- Calm visual design
+- Mobile-first responsive
+- No more than 3 main choices in a step when possible
+- Every item should end up as a task, project, event, note, or trash
+- Every task or project should have a clear next action
+- The app should make restart easy after drift or overwhelm
+
+Main navigation:
+- Home
+- Inbox
+- Today
+- Projects
+- Review
+- Settings
+
+MVP features:
+
+1. Home
+- Large Quick Capture field at the top
+- Brain Dump button
+- Simple cards for Inbox, Today, Projects
+- Very little data shown, just counts and next action cues
+
+2. Quick Capture
+- Fast single-item text capture
+- Store immediately to Inbox
+- No required categorization at capture time
+
+3. Brain Dump Mode
+- Rapid multi-line capture for many items at once
+- Save all lines as separate Inbox items
+- Optimized for getting ideas out fast
+
+4. Inbox
+- Process one item at a time
+- Ask:
+  - Is this a task, project, event, note, or trash?
+  - Which area: Work, Family, Home, Personal?
+  - When: Today, This Week, Later?
+  - What is the next visible action?
+- Quick actions:
+  - Do Today
+  - Schedule
+  - Add to Project
+  - Waiting On
+  - Defer
+  - Delete
+
+5. Today
+- Show only:
+  - Start Here
+  - Top 3 priorities
+  - Quick Wins
+  - Scheduled items
+- Keep this screen extremely simple and calming
+
+6. Projects
+- Project cards should show:
+  - title
+  - area
+  - optional due date
+  - next action
+  - status: Active, Waiting On, Paused
+- Highlight projects with no next action
+
+7. Review
+- Guided weekly review flow:
+  - clear inbox
+  - review projects
+  - review upcoming
+  - check waiting on
+  - choose weekly priorities
+
+8. Settings
+- Large text mode
+- High contrast mode
+- Reduced motion
+- Local storage note
+- Privacy note
+
+UI requirements:
+- Calm and spacious
+- Light neutral background
+- Dark readable text
+- Use color only for meaning
+- Work = soft blue
+- Home = muted green
+- Family = soft purple
+- Urgent/Today = muted orange
+- Later/neutral = light gray
+- No busy charts
+- No gamification
+- No dense analytics
+- No tiny controls
+
+Technical requirements:
+- React with TypeScript
+- Clean component-based architecture
+- Local storage first
+- Simple seed data for demo
+- Code comments for future extension
+- Prepare the data model so AI-assisted triage can be added later, but do not make AI the main feature right now
+
+Important:
+Please first analyze the current app and tell me:
+1. what to keep
+2. what to remove
+3. what to refactor
+4. what new files/components/routes are needed
+
+Then implement the refactor in phases rather than changing everything blindly at once.
