@@ -1,37 +1,96 @@
 import { useState } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { Button } from "@/components/ui/button";
-import { Project } from "@/lib/types";
+import { Project, AreaOfLife, ProjectStatus } from "@/lib/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 import { motion } from "framer-motion";
+import { format, parseISO } from "date-fns";
+
+type ProjectDraft = Omit<Project, 'id' | 'createdAt'>;
+
+const DEFAULT_DRAFT: ProjectDraft = {
+  title: '',
+  area: 'work',
+  nextAction: '',
+  status: 'not-started',
+  dueDate: null,
+};
+
+const AREAS: { value: AreaOfLife; label: string }[] = [
+  { value: 'work', label: 'Work' },
+  { value: 'home', label: 'Home' },
+  { value: 'family', label: 'Family' },
+  { value: 'personal', label: 'Personal' },
+];
+
+const STATUSES: { value: ProjectStatus; label: string }[] = [
+  { value: 'not-started', label: 'Not started' },
+  { value: 'in-progress', label: 'Active' },
+  { value: 'done', label: 'Done' },
+];
+
+const STATUS_DOT: Record<ProjectStatus, string> = {
+  'not-started': 'bg-muted-foreground/40',
+  'in-progress': 'bg-primary',
+  'done': 'bg-green-500',
+};
 
 export default function Projects() {
   const { projects, addProject, updateProject } = useAppData();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Partial<Project>>({ title: '', area: 'work', nextAction: '', status: 'not-started' });
+  const [draft, setDraft] = useState<ProjectDraft>(DEFAULT_DRAFT);
 
   const activeProjects = projects.filter((p: Project) => p.status !== 'done');
-  
+  const doneProjects = projects.filter((p: Project) => p.status === 'done');
+
   const openNew = () => {
-    setDraft({ title: '', area: 'work', nextAction: '', status: 'not-started' });
+    setDraft(DEFAULT_DRAFT);
     setEditingId('new');
   };
 
   const openEdit = (p: Project) => {
-    setDraft(p);
+    setDraft({
+      title: p.title,
+      area: p.area,
+      nextAction: p.nextAction,
+      status: p.status,
+      dueDate: p.dueDate,
+    });
     setEditingId(p.id);
   };
 
   const handleSave = () => {
-    if (!draft.title?.trim()) return;
+    if (!draft.title.trim()) return;
     if (editingId === 'new') {
-      addProject(draft as any);
+      addProject(draft);
     } else if (editingId) {
       updateProject(editingId, draft);
     }
     setEditingId(null);
   };
+
+  const ProjectCard = ({ p }: { p: Project }) => (
+    <motion.div
+      whileTap={{ scale: 0.98 }}
+      onClick={() => openEdit(p)}
+      className="bg-card p-6 rounded-[2rem] shadow-sm border border-border/60 cursor-pointer hover:shadow-md hover:border-border transition-all"
+    >
+      <p className="text-xs font-bold uppercase tracking-widest text-primary mb-2">{p.area}</p>
+      <h3 className="text-2xl font-display font-bold mb-4 text-foreground leading-tight">{p.title}</h3>
+      <div className="flex items-start gap-3 bg-accent/30 p-4 rounded-2xl">
+        <div className={`w-3.5 h-3.5 rounded-full mt-1 flex-shrink-0 ${STATUS_DOT[p.status]}`} />
+        <p className="text-lg text-foreground/90 leading-snug font-medium">
+          Next: {p.nextAction || 'Nothing set yet'}
+        </p>
+      </div>
+      {p.dueDate && (
+        <p className="text-sm text-muted-foreground mt-3 pl-1">
+          Due {format(parseISO(p.dueDate), 'MMM d')}
+        </p>
+      )}
+    </motion.div>
+  );
 
   return (
     <div className="p-6 animate-in fade-in duration-500">
@@ -42,78 +101,85 @@ export default function Projects() {
         </Button>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {activeProjects.length === 0 ? (
-           <p className="text-muted-foreground text-lg text-center mt-12">No active projects.</p>
-        ) : (
-          activeProjects.map((p: Project) => (
-            <motion.div 
-              key={p.id}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => openEdit(p)}
-              className="bg-card p-6 rounded-[2rem] shadow-sm border border-border/60 cursor-pointer hover:shadow-md hover:border-border transition-all"
-            >
-              <p className="text-xs font-bold uppercase tracking-widest text-primary mb-2">{p.area}</p>
-              <h3 className="text-2xl font-display font-bold mb-4 text-foreground leading-tight">{p.title}</h3>
-              <div className="flex items-start gap-3 bg-accent/30 p-4 rounded-2xl">
-                <div className={`w-3.5 h-3.5 rounded-full mt-1 flex-shrink-0 ${p.status === 'not-started' ? 'bg-muted-foreground/40' : p.status === 'in-progress' ? 'bg-primary' : 'bg-green-500'}`} />
-                <p className="text-lg text-foreground/90 leading-snug font-medium">Next: {p.nextAction || 'None'}</p>
+      {activeProjects.length === 0 && doneProjects.length === 0 ? (
+        <p className="text-muted-foreground text-lg text-center mt-12">No projects yet.</p>
+      ) : (
+        <>
+          <div className="flex flex-col gap-4">
+            {activeProjects.map((p: Project) => <ProjectCard key={p.id} p={p} />)}
+          </div>
+          {doneProjects.length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4 pl-1">Done</h2>
+              <div className="flex flex-col gap-4 opacity-60">
+                {doneProjects.map((p: Project) => <ProjectCard key={p.id} p={p} />)}
               </div>
-            </motion.div>
-          ))
-        )}
-      </div>
+            </div>
+          )}
+        </>
+      )}
 
-      <Dialog open={!!editingId} onOpenChange={(o) => !o && setEditingId(null)}>
-        <DialogContent className="max-w-md w-[92vw] rounded-[2rem] p-6 top-[50%] translate-y-[-50%] bg-card">
+      <Dialog open={!!editingId} onOpenChange={(o) => { if (!o) setEditingId(null); }}>
+        <DialogContent className="max-w-md w-[92vw] rounded-[2rem] p-6 bg-card">
           <DialogHeader className="mb-6">
-            <DialogTitle className="text-2xl font-display font-bold">{editingId === 'new' ? 'New Project' : 'Edit Project'}</DialogTitle>
+            <DialogTitle className="text-2xl font-display font-bold">
+              {editingId === 'new' ? 'New project' : 'Edit project'}
+            </DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-5">
-            <input 
-              value={draft.title || ''}
-              onChange={e => setDraft({...draft, title: e.target.value})}
-              placeholder="Project title..."
+            <input
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              placeholder="Project name..."
               className="text-xl font-medium p-4 bg-background border border-border/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
-            <input 
-              value={draft.nextAction || ''}
-              onChange={e => setDraft({...draft, nextAction: e.target.value})}
-              placeholder="Next specific action..."
+            <input
+              value={draft.nextAction}
+              onChange={(e) => setDraft({ ...draft, nextAction: e.target.value })}
+              placeholder="Next step to take..."
               className="text-lg p-4 bg-background border border-border/50 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
-            <div className="flex gap-2 p-1 bg-accent/30 rounded-2xl">
-               {['work', 'home', 'family', 'personal'].map(area => (
-                 <button 
-                   key={area}
-                   onClick={() => setDraft({...draft, area: area as any})}
-                   className={`flex-1 py-3 text-sm font-bold uppercase tracking-wider rounded-xl transition-all ${draft.area === area ? 'bg-background shadow-sm text-primary' : 'text-muted-foreground'}`}
-                 >
-                   {area}
-                 </button>
-               ))}
+            {/* Area selector — 4 options but laid out 2×2 to avoid a single row of 4 */}
+            <div className="grid grid-cols-2 gap-2">
+              {AREAS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setDraft({ ...draft, area: value })}
+                  className={`py-3 text-sm font-bold rounded-2xl transition-all border ${
+                    draft.area === value
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background text-muted-foreground border-border/50 hover:border-border'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
+            {/* Status selector — 3 options in one row */}
             <div className="flex gap-2 p-1 bg-accent/30 rounded-2xl">
-               {[
-                 { v: 'not-started', l: 'Not Started' }, 
-                 { v: 'in-progress', l: 'In Progress' }, 
-                 { v: 'done', l: 'Done' }
-               ].map(s => (
-                 <button 
-                   key={s.v}
-                   onClick={() => setDraft({...draft, status: s.v as any})}
-                   className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${draft.status === s.v ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-                 >
-                   {s.l}
-                 </button>
-               ))}
+              {STATUSES.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setDraft({ ...draft, status: value })}
+                  className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${
+                    draft.status === value ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-            <Button size="lg" className="h-16 text-xl rounded-2xl mt-4 shadow-lg shadow-primary/20" onClick={handleSave}>
-              Save Project
+            <Button
+              size="lg"
+              className="h-16 text-xl rounded-2xl mt-2 shadow-lg shadow-primary/20"
+              onClick={handleSave}
+              disabled={!draft.title.trim()}
+            >
+              Save project
             </Button>
           </div>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

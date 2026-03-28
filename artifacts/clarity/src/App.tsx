@@ -3,6 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppDataProvider } from "@/lib/useAppData";
 import { AppShell } from "@/components/app-shell";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import Capture from "@/pages/capture";
 import Inbox from "@/pages/inbox";
@@ -12,6 +13,8 @@ import Upcoming from "@/pages/upcoming";
 import Review from "@/pages/review";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
+
+const queryClient = new QueryClient();
 
 function Router() {
   return (
@@ -32,14 +35,16 @@ function Router() {
 
 function App() {
   return (
-    <AppDataProvider>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </AppDataProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppDataProvider>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </TooltipProvider>
+      </AppDataProvider>
+    </QueryClientProvider>
   );
 }
 
