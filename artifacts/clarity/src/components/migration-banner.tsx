@@ -14,14 +14,14 @@ export function MigrationBanner() {
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured || !userId) return;
     const migrated = localStorage.getItem('clarity_migrated');
     const dismissed = localStorage.getItem('clarity_migration_dismissed');
     const hasData = items.length > 0 || projects.length > 0;
     if (!migrated && !dismissed && hasData) {
       setVisible(true);
     }
-  }, [isSupabaseConfigured, items.length, projects.length]);
+  }, [isSupabaseConfigured, userId, items.length, projects.length]);
 
   if (!visible) return null;
 
