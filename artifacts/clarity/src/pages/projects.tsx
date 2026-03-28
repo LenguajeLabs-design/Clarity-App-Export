@@ -60,6 +60,7 @@ export default function Projects() {
 
   const ProjectCard = ({ p }: { p: Project }) => {
     const areaColor = AREA_COLOR[p.area] ?? "#7A8599";
+    const missingNextAction = !p.nextAction.trim();
     return (
       <motion.div
         whileTap={{ scale: 0.98 }}
@@ -80,11 +81,25 @@ export default function Projects() {
 
           <h3 className="text-2xl font-display font-bold mb-4 text-foreground leading-tight">{p.title}</h3>
 
-          {/* Next action row — plain card, no coloured bg */}
-          <div className="flex items-start gap-3 bg-muted/40 p-4 rounded-2xl">
-            <div className={`w-2.5 h-2.5 rounded-full mt-[5px] flex-shrink-0 ${STATUS_DOT[p.status]}`} />
-            <p className="text-base text-foreground/85 leading-snug font-medium">
-              {p.nextAction || 'Nothing set yet'}
+          {/* Next action row — amber warning when empty, plain card otherwise */}
+          <div
+            className={`flex items-start gap-3 p-4 rounded-2xl transition-colors ${
+              missingNextAction
+                ? 'bg-amber-50 border border-amber-200/70'
+                : 'bg-muted/40'
+            }`}
+          >
+            {missingNextAction ? (
+              <div className="w-2.5 h-2.5 rounded-full mt-[5px] flex-shrink-0 bg-amber-400" />
+            ) : (
+              <div className={`w-2.5 h-2.5 rounded-full mt-[5px] flex-shrink-0 ${STATUS_DOT[p.status]}`} />
+            )}
+            <p
+              className={`text-base leading-snug font-medium ${
+                missingNextAction ? 'text-amber-700' : 'text-foreground/85'
+              }`}
+            >
+              {missingNextAction ? 'Needs a next step — tap to add one' : p.nextAction}
             </p>
           </div>
 

@@ -33,7 +33,17 @@ export default function Settings() {
       </div>
       
       <div className="h-px bg-border/60 w-full mb-10" />
-      
+
+      {/* Local storage note */}
+      <div className="bg-muted/50 p-6 rounded-2xl border border-border/50 mb-4">
+        <h3 className="text-lg font-semibold text-foreground mb-2">Your data lives on this device</h3>
+        <p className="text-base text-muted-foreground leading-relaxed">
+          Everything is saved in your browser's local storage — no account, no server, no sync.
+          If you clear your browser data or switch devices, your data will not carry over.
+        </p>
+      </div>
+
+      {/* Privacy promise */}
       <div className="bg-primary/5 p-8 rounded-[2rem] border border-primary/10">
         <h3 className="text-2xl font-display font-bold text-primary mb-3">Privacy Promise</h3>
         <p className="text-lg text-foreground/80 leading-relaxed font-medium">

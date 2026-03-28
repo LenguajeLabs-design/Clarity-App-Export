@@ -2,8 +2,15 @@ import { CapturedItem } from "@/lib/types";
 import { useAppData } from "@/lib/useAppData";
 import { motion } from "framer-motion";
 import { AREA_COLOR } from "@/lib/colors";
+import { Zap } from "lucide-react";
 
-export function ItemRow({ item }: { item: CapturedItem }) {
+interface ItemRowProps {
+  item: CapturedItem;
+  // When provided, renders a ⚡ quick-win toggle button on the right
+  onMarkQuickWin?: () => void;
+}
+
+export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
   const { completeItem } = useAppData();
 
   const areaColor = item.area ? AREA_COLOR[item.area] : undefined;
@@ -22,11 +29,11 @@ export function ItemRow({ item }: { item: CapturedItem }) {
         style={{ backgroundColor: areaColor ?? "transparent" }}
       />
 
-      <div className="flex items-center flex-1 px-4 py-3">
+      <div className="flex items-center flex-1 px-4 py-3 gap-2">
         <button
           onClick={() => completeItem(item.id)}
           aria-label="Mark as done"
-          className="w-12 h-12 rounded-full border-2 border-border flex items-center justify-center mr-3 flex-shrink-0 hover:border-primary/60 hover:bg-primary/5 transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="w-12 h-12 rounded-full border-2 border-border flex items-center justify-center flex-shrink-0 hover:border-primary/60 hover:bg-primary/5 transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10"
         >
           <svg
             className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity"
@@ -47,6 +54,22 @@ export function ItemRow({ item }: { item: CapturedItem }) {
             </span>
           )}
         </div>
+
+        {/* Quick-win toggle — only rendered when the caller opts in */}
+        {onMarkQuickWin && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onMarkQuickWin(); }}
+            aria-label={item.isQuickWin ? "Remove quick win" : "Mark as quick win"}
+            title={item.isQuickWin ? "Remove quick win" : "Quick win"}
+            className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+              item.isQuickWin
+                ? "text-amber-500 bg-amber-50"
+                : "text-muted-foreground/30 hover:text-amber-400 hover:bg-amber-50/60"
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+          </button>
+        )}
       </div>
     </motion.div>
   );

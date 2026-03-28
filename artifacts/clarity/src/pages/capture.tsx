@@ -18,7 +18,7 @@ interface ParsedTask {
 }
 
 export default function Capture() {
-  const { addItem, addItemsBatch, addItemsBatchStructured, items } = useAppData();
+  const { addItem, addItemsBatch, addItemsBatchStructured, items, projects } = useAppData();
   const [text, setText] = useState("");
   const [brainDumpMode, setBrainDumpMode] = useState(false);
   const [brainDumpTab, setBrainDumpTab] = useState<BrainDumpTab>("lines");
@@ -37,7 +37,9 @@ export default function Capture() {
   const [saved, setSaved] = useState(false);
   const [, setLocation] = useLocation();
 
-  const untriagedCount = items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted).length;
+  const untriagedCount  = items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted).length;
+  const todayCount      = items.filter((i: CapturedItem) => i.isTriaged && !i.isDeleted && !i.isCompleted && (i.timing === 'today' || i.isPriority)).length;
+  const projectsCount   = projects.filter((p) => p.status !== 'done').length;
   const isFirstTime = items.length === 0;
 
   // — Single capture —
@@ -226,15 +228,42 @@ export default function Capture() {
               Brain dump — get it all out at once
             </button>
 
+            {/* System overview cards — only shown when there's data */}
             {!isFirstTime && (
-              <button
-                onClick={() => setLocation("/inbox")}
-                className="mt-3 text-center text-muted-foreground/60 text-sm hover:text-muted-foreground transition-colors py-2 active:scale-95"
-              >
-                {untriagedCount > 0
-                  ? `${untriagedCount} ${untriagedCount === 1 ? "item" : "items"} waiting in inbox →`
-                  : "Inbox is clear ✨"}
-              </button>
+              <div className="mt-6 grid grid-cols-3 gap-3">
+                {/* Inbox */}
+                <button
+                  onClick={() => setLocation("/inbox")}
+                  className="flex flex-col items-center justify-center bg-card border border-border/60 rounded-2xl py-4 px-2 shadow-sm hover:shadow-md hover:border-border active:scale-95 transition-all min-h-[80px]"
+                >
+                  <span className={`text-2xl font-bold font-display tabular-nums ${untriagedCount > 0 ? "text-primary" : "text-muted-foreground/50"}`}>
+                    {untriagedCount}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium mt-1">Inbox</span>
+                </button>
+
+                {/* Today */}
+                <button
+                  onClick={() => setLocation("/today")}
+                  className="flex flex-col items-center justify-center bg-card border border-border/60 rounded-2xl py-4 px-2 shadow-sm hover:shadow-md hover:border-border active:scale-95 transition-all min-h-[80px]"
+                >
+                  <span className={`text-2xl font-bold font-display tabular-nums ${todayCount > 0 ? "text-foreground" : "text-muted-foreground/50"}`}>
+                    {todayCount}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium mt-1">Today</span>
+                </button>
+
+                {/* Projects */}
+                <button
+                  onClick={() => setLocation("/projects")}
+                  className="flex flex-col items-center justify-center bg-card border border-border/60 rounded-2xl py-4 px-2 shadow-sm hover:shadow-md hover:border-border active:scale-95 transition-all min-h-[80px]"
+                >
+                  <span className={`text-2xl font-bold font-display tabular-nums ${projectsCount > 0 ? "text-foreground" : "text-muted-foreground/50"}`}>
+                    {projectsCount}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium mt-1">Projects</span>
+                </button>
+              </div>
             )}
           </motion.div>
         )}
