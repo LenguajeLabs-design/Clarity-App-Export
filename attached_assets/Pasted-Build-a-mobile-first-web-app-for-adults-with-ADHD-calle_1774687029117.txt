@@ -1,0 +1,131 @@
+Build a mobile-first web app for adults with ADHD called “Clarity.”
+
+Purpose:
+This app helps busy adults quickly capture tasks, projects, reminders, and responsibilities, then triage and organize them into a simple system. It is designed for people who are overwhelmed, forgetful, and juggling work, home, family, and personal life.
+
+Primary user:
+A busy teacher, parent, spouse, and professional who constantly remembers things at the wrong time and needs a trusted system to capture, triage, and organize life without overwhelm.
+
+Core product goals:
+- Fast capture of thoughts, tasks, projects, reminders, and commitments
+- Low-friction triage of inbox items
+- Clear daily priorities
+- Project organization with next actions
+- A calm interface with minimal clutter
+- ADHD-friendly usability
+
+Design principles:
+- Mobile-first responsive web app
+- One action at a time
+- Very low visual clutter
+- Large buttons and large text
+- Clear spacing
+- Calm, simple interface
+- No more than 3 main choices in any workflow
+- The user should never feel buried in lists
+
+Main navigation:
+- Inbox
+- Today
+- Projects
+- Upcoming
+- Review
+- Settings
+
+Core MVP features:
+
+1. Quick Capture
+- A prominent capture field on the home screen
+- Ability to type a task, reminder, project idea, or note
+- Save instantly to Inbox
+
+2. Inbox Triage
+- Process one item at a time
+- Ask:
+  - Is this a task, project, event, or note?
+  - Which area does it belong to: Work, Home, Family, Personal?
+  - When does it matter: Today, This Week, Later?
+  - What is the next step?
+- Allow quick actions:
+  - Do today
+  - Schedule
+  - Add to project
+  - Defer
+  - Delete
+
+3. Today View
+- Show only:
+  - top 3 priorities
+  - quick wins
+  - scheduled items
+- Keep this screen visually simple
+
+4. Projects
+- Create and manage projects
+- Each project should show:
+  - title
+  - category
+  - due date optional
+  - next action
+  - progress state
+- Examples:
+  - parent workshop
+  - report cards
+  - move classroom
+  - family travel planning
+
+5. Upcoming
+- Show scheduled tasks and deadlines in a simple time-based view
+- Keep it clean and easy to scan
+
+6. Weekly Review
+- Guided review flow:
+  - process inbox
+  - review projects
+  - review upcoming commitments
+  - select next week’s main priorities
+
+7. Settings
+- large text mode
+- high contrast mode
+- reduced motion
+- local data storage
+- privacy note
+
+Technical requirements:
+- Use React with TypeScript
+- Use a clean component-based architecture
+- Store data locally for MVP
+- Build with mock data first
+- Add placeholder support for future AI-assisted triage
+- Add comments so the app is easy to extend later
+
+AI-ready placeholder:
+Design the data model so that later we can add AI features such as:
+- detecting whether an inbox item is a task or project
+- suggesting next actions
+- helping prioritize the day
+- generating a weekly review summary
+
+Tone:
+- calm
+- practical
+- nonjudgmental
+- clear
+- short
+
+Avoid:
+- gamification
+- busy dashboards
+- dense walls of text
+- complicated tagging systems
+- too many filters
+- overwhelming productivity jargon
+
+Please generate:
+1. App structure
+2. Routing and core components
+3. MVP screens
+4. Local storage logic
+5. Dummy seed data
+6. A polished but simple UI optimized for adults with ADHD
