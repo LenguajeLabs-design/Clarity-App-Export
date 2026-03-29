@@ -116,7 +116,7 @@ export default function Capture() {
     setAiError("");
     setParsedTasks([]);
     try {
-      const response = await fetch("/__clarity_ai__/parse-tasks", {
+      const response = await fetch("/api/parse-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: rawText }),
