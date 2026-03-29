@@ -184,11 +184,13 @@ export async function syncWithGitHub(
     // backup failure is non-fatal
   }
 
-  // Step 3 — push winner with a fresh timestamp
-  const dataToWrite: GitHubSyncData = { ...winner, syncedAt: new Date().toISOString() };
-  await pushToGitHub(config, dataToWrite, sha);
+  // Step 3 — push winner, preserving its syncedAt (= when data was last modified).
+  // Do NOT override syncedAt to now — that would make every sync appear "newest"
+  // regardless of when the data was actually changed, breaking the comparison
+  // on the next sync from a different device.
+  await pushToGitHub(config, winner, sha);
 
-  return { mergedData: dataToWrite, hadRemoteUpdate };
+  return { mergedData: winner, hadRemoteUpdate };
 }
 
 // ─── Validation ───────────────────────────────────────────────────────────────

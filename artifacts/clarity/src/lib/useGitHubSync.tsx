@@ -69,9 +69,26 @@ export function GitHubSyncProvider({ children }: { children: React.ReactNode }) 
     setStatus('syncing');
     setErrorMessage('');
 
+    // syncedAt must represent WHEN THIS DATA WAS LAST MODIFIED, not when
+    // the sync is running. A fresh device with no data uses epoch 0 so
+    // the remote (which has real data) always wins on first connect.
+    const stored = localStorage.getItem('clarity_last_modified');
+    let syncedAt: string;
+    if (stored) {
+      syncedAt = stored;
+    } else {
+      // Pre-fix device: fall back to most recent item/project createdAt.
+      // A device with zero data gets epoch 0, so remote always wins.
+      const dates = [
+        ...items.map(i => i.createdAt),
+        ...projects.map(p => p.createdAt),
+      ].filter(Boolean).sort();
+      syncedAt = dates[dates.length - 1] ?? new Date(0).toISOString();
+    }
+
     const localData: GitHubSyncData = {
       version: 1,
-      syncedAt: new Date().toISOString(),
+      syncedAt,
       items,
       projects,
       settings,

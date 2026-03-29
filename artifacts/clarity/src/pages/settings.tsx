@@ -174,6 +174,7 @@ function GitHubSyncSection() {
         result.mergedData.items,
         result.mergedData.projects,
         result.mergedData.settings,
+        result.mergedData.syncedAt,
       );
     }
   }

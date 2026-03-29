@@ -30,6 +30,17 @@ export const BLANK_ITEM = (text: string): CapturedItem => ({
 
 const AppDataContext = createContext<AppData | null>(null);
 
+/**
+ * Record the current time as the "last data modification" timestamp.
+ * This is what GitHub sync uses for "latest write wins" comparisons.
+ * Must be called on every real data mutation (add / update / delete).
+ */
+function touchModified() {
+  try {
+    localStorage.setItem('clarity_last_modified', new Date().toISOString());
+  } catch { /* non-fatal */ }
+}
+
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useLocalStorage<CapturedItem[]>('clarity_items', []);
   const [projects, setProjects] = useLocalStorage<Project[]>('clarity_projects', []);
@@ -42,12 +53,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const addItem = (text: string) => {
     const newItem = BLANK_ITEM(text);
     setItems((prev) => [newItem, ...prev]);
+    touchModified();
     void syncItem(newItem, userId, setSyncing, setSynced, setSyncError);
   };
 
   const addItemsBatch = (texts: string[]) => {
     const newItems = texts.filter((t) => t.trim()).map((t) => BLANK_ITEM(t.trim()));
     setItems((prev) => [...newItems, ...prev]);
+    if (newItems.length > 0) touchModified();
     void syncItems(newItems, userId, setSyncing, setSynced, setSyncError);
   };
 
@@ -66,11 +79,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ...(s.timing ? { timing: s.timing } : {}),
       }));
     setItems((prev) => [...newItems, ...prev]);
+    if (newItems.length > 0) touchModified();
     void syncItems(newItems, userId, setSyncing, setSynced, setSyncError);
   };
 
   const updateItem = (id: string, updates: Partial<CapturedItem>) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
+    touchModified();
     const currentItem = items.find((i) => i.id === id);
     if (currentItem) {
       void syncItem({ ...currentItem, ...updates }, userId, setSyncing, setSynced, setSyncError);
@@ -84,11 +99,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const addProject = (p: Omit<Project, 'id' | 'createdAt'>) => {
     const newProject: Project = { ...p, id: uuidv4(), createdAt: new Date().toISOString() };
     setProjects((prev) => [newProject, ...prev]);
+    touchModified();
     void syncProject(newProject, userId, setSyncing, setSynced, setSyncError);
   };
 
   const updateProject = (id: string, updates: Partial<Project>) => {
     setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    touchModified();
     const currentProject = projects.find((p) => p.id === id);
     if (currentProject) {
       void syncProject({ ...currentProject, ...updates }, userId, setSyncing, setSynced, setSyncError);
@@ -97,14 +114,21 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   // Replace the full dataset at once — used after GitHub sync detects a newer
   // remote version. Updates both React state and localStorage atomically.
+  // syncedAt is the remote's modification timestamp; we store it so future
+  // syncs compare modification times correctly rather than treating this
+  // device as "freshly edited".
   const replaceAllData = (
     newItems: CapturedItem[],
     newProjects: Project[],
     newSettings: UserSettings,
+    syncedAt?: string,
   ) => {
     setItems(newItems);
     setProjects(newProjects);
     setSettings(newSettings);
+    try {
+      localStorage.setItem('clarity_last_modified', syncedAt ?? new Date().toISOString());
+    } catch { /* non-fatal */ }
   };
 
   const value: AppData = {

@@ -26,11 +26,13 @@ export function GitHubSyncButton() {
     if (status === 'syncing') return;
     const result = await sync(items, projects, settings);
     if (result?.hadRemoteUpdate) {
-      // Remote was newer — replace local state
+      // Remote was newer — replace local state and record when that data
+      // was last modified so future sync comparisons remain valid.
       replaceAllData(
         result.mergedData.items,
         result.mergedData.projects,
         result.mergedData.settings,
+        result.mergedData.syncedAt,
       );
     }
   }
