@@ -336,58 +336,96 @@ function GitHubSyncSection() {
 function RestoreBackupSection() {
   const { replaceAllData } = useAppData();
   const [restored, setRestored] = useState(false);
-  const [itemCount, setItemCount] = useState<number | null>(null);
+  const [restoredCount, setRestoredCount] = useState<number | null>(null);
+  const [showDiag, setShowDiag] = useState(false);
 
-  const backup = (() => {
-    try {
-      const raw = localStorage.getItem('clarity_github_backup');
-      if (!raw) return null;
-      const parsed = JSON.parse(raw) as GitHubSyncData;
-      if (!Array.isArray(parsed.items) || parsed.items.length === 0) return null;
-      return parsed;
-    } catch {
-      return null;
-    }
+  // Read every relevant key from localStorage
+  const diag = (() => {
+    const read = (key: string) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        return JSON.parse(raw);
+      } catch { return null; }
+    };
+    const backup = read('clarity_github_backup') as GitHubSyncData | null;
+    const items = read('clarity_items') as unknown[] | null;
+    const projects = read('clarity_projects') as unknown[] | null;
+    return {
+      backup,
+      backupItemCount: Array.isArray(backup?.items) ? backup!.items.filter((i: { isDeleted?: boolean }) => !i.isDeleted).length : 0,
+      backupSyncedAt: backup?.syncedAt ?? null,
+      currentItemCount: Array.isArray(items) ? items.filter((i: { isDeleted?: boolean }) => !i.isDeleted).length : 0,
+      currentProjectCount: Array.isArray(projects) ? projects.filter((p: { isDeleted?: boolean }) => !p.isDeleted).length : 0,
+      lastModified: localStorage.getItem('clarity_last_modified'),
+    };
   })();
 
-  if (!backup) return null;
+  const hasBackupData = diag.backupItemCount > 0;
+
+  // Only show this section when there's something to report
+  if (!diag.backup && diag.currentItemCount > 0) return null;
 
   function handleRestore() {
-    if (!backup) return;
-    // Restore with no syncedAt so clarity_last_modified becomes NOW —
-    // this ensures the next sync pushes this data rather than pulling
-    // the corrupted empty data from GitHub again.
-    replaceAllData(backup.items, backup.projects, backup.settings);
-    setItemCount(backup.items.filter(i => !i.isDeleted).length);
+    if (!diag.backup) return;
+    replaceAllData(diag.backup.items, diag.backup.projects, diag.backup.settings);
+    setRestoredCount(diag.backupItemCount);
     setRestored(true);
   }
 
   return (
     <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 mb-4">
-      <div className="flex items-start gap-3 mb-4">
+      <div className="flex items-start gap-3 mb-3">
         <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-        <div>
-          <h3 className="text-base font-semibold text-foreground mb-1">Backup found</h3>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-foreground mb-1">
+            {restored ? 'Data restored' : hasBackupData ? 'Backup found' : 'Data recovery'}
+          </h3>
           <p className="text-sm text-muted-foreground leading-relaxed">
             {restored
-              ? `Restored ${itemCount} task${itemCount !== 1 ? 's' : ''}. Now tap Sync to push your data back to GitHub.`
-              : `A local backup from before your last sync was found (${backup.items.filter(i => !i.isDeleted).length} tasks). Tap to restore it.`}
+              ? `Restored ${restoredCount} task${restoredCount !== 1 ? 's' : ''}. Tap Sync to push your data back to GitHub.`
+              : hasBackupData
+              ? `A backup with ${diag.backupItemCount} task${diag.backupItemCount !== 1 ? 's' : ''} was found from before your last sync.`
+              : `Your data appears empty. See the diagnostic below to understand what happened.`}
           </p>
         </div>
       </div>
-      {!restored && (
+
+      {!restored && hasBackupData && (
         <button
           onClick={handleRestore}
-          className="flex items-center gap-2 text-sm font-semibold text-white bg-amber-600 rounded-xl px-4 py-2.5 min-h-[44px] w-full justify-center hover:bg-amber-700 active:scale-95 transition-all"
+          className="flex items-center gap-2 text-sm font-semibold text-white bg-amber-600 rounded-xl px-4 py-2.5 min-h-[44px] w-full justify-center hover:bg-amber-700 active:scale-95 transition-all mb-3"
         >
           <RotateCcw className="w-4 h-4" />
-          Restore {backup.items.filter(i => !i.isDeleted).length} tasks from backup
+          Restore {diag.backupItemCount} tasks from backup
         </button>
       )}
+
       {restored && (
-        <div className="flex items-center gap-2 text-sm text-amber-700 font-medium">
+        <div className="flex items-center gap-2 text-sm text-amber-700 font-medium mb-3">
           <CheckCircle2 className="w-4 h-4" />
           Restored — sync now to save to GitHub
+        </div>
+      )}
+
+      {/* Diagnostic toggle */}
+      <button
+        onClick={() => setShowDiag(v => !v)}
+        className="text-xs text-amber-700/70 underline underline-offset-2 mt-1"
+      >
+        {showDiag ? 'Hide diagnostic' : 'Show storage diagnostic'}
+      </button>
+
+      {showDiag && (
+        <div className="mt-3 bg-background/60 rounded-xl p-3 text-xs font-mono text-muted-foreground space-y-1">
+          <div>clarity_items: <span className="text-foreground">{diag.currentItemCount} active tasks</span></div>
+          <div>clarity_projects: <span className="text-foreground">{diag.currentProjectCount} projects</span></div>
+          <div>clarity_github_backup: <span className="text-foreground">
+            {diag.backup ? `${diag.backupItemCount} tasks (saved ${diag.backupSyncedAt ? new Date(diag.backupSyncedAt).toLocaleString() : 'unknown'})` : 'not found'}
+          </span></div>
+          <div>clarity_last_modified: <span className="text-foreground">
+            {diag.lastModified ? new Date(diag.lastModified).toLocaleString() : 'not set'}
+          </span></div>
         </div>
       )}
     </div>
