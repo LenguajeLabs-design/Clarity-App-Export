@@ -46,6 +46,7 @@ export interface UserSettings {
   largeText: boolean;
   highContrast: boolean;
   reducedMotion: boolean;
+  theme?: 'light' | 'dark' | 'auto';
 }
 
 export interface AppData {

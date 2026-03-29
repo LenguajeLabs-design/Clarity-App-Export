@@ -107,6 +107,46 @@
   --timing-today: 192 122 58;    /* #C07A3A */
 }
 
+/* ── Dark mode ──────────────────────────────────────────────────────── */
+.dark {
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .08);
+  --opaque-button-border-intensity: 8;
+
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
+
+  --background: 222 20% 10%;
+  --foreground: 220 10% 93%;
+
+  --card: 222 18% 14%;
+  --card-foreground: 220 10% 93%;
+  --card-border: 222 14% 21%;
+
+  --popover: 222 18% 14%;
+  --popover-foreground: 220 10% 93%;
+  --popover-border: 222 14% 21%;
+
+  --primary: 214 55% 60%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 222 14% 20%;
+  --secondary-foreground: 220 10% 93%;
+
+  --muted: 222 14% 18%;
+  --muted-foreground: 220 8% 56%;
+
+  --accent: 222 14% 20%;
+  --accent-foreground: 220 10% 93%;
+
+  --destructive: 0 55% 62%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 222 12% 22%;
+  --input: 222 12% 22%;
+  --ring: 214 55% 60%;
+}
+
 /* ── High Contrast ──────────────────────────────────────────────────── */
 html.high-contrast {
   --background: 0 0% 100%;

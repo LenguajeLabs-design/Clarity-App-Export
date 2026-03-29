@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { ItemRow } from "@/components/item-row";
+import { AreaFilterBar, AreaFilter } from "@/components/area-filter-bar";
 import { Sun, Star, Zap } from "lucide-react";
 import { CapturedItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -52,17 +53,23 @@ function StartHereCard({ item, onComplete }: { item: CapturedItem; onComplete: (
 export default function Today() {
   const { items, updateItem, completeItem } = useAppData();
   const [pickingPriorities, setPickingPriorities] = useState(false);
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>(null);
 
-  const todayItems = items.filter(
+  const allTriaged = items.filter(
     (i: CapturedItem) => i.isTriaged && !i.isDeleted && !i.isCompleted
   );
+
+  // Area filter applies to display sections only; priority picker uses allTriaged
+  const todayItems = areaFilter
+    ? allTriaged.filter((i: CapturedItem) => i.area === areaFilter)
+    : allTriaged;
 
   const priorities   = todayItems.filter((i: CapturedItem) => i.isPriority);
   const waitingOn    = todayItems.filter((i: CapturedItem) => i.waitingOn && !i.isPriority);
   const rest         = todayItems.filter((i: CapturedItem) => !i.isPriority && !i.waitingOn);
   const quickWins    = rest.filter((i: CapturedItem) => i.isQuickWin);
   const everythingElse = rest.filter((i: CapturedItem) => !i.isQuickWin);
-  const priorityCount  = priorities.length;
+  const priorityCount  = allTriaged.filter((i: CapturedItem) => i.isPriority).length;
 
   const startHereItem   = priorities[0] ?? null;
   const remainingPriorities = priorities.slice(1);
@@ -162,7 +169,7 @@ export default function Today() {
   // ─── Main Today view ──────────────────────────────────────────────────────
   return (
     <div className="p-6 animate-in fade-in duration-500">
-      <div className="flex items-end justify-between mb-10">
+      <div className="flex items-end justify-between mb-4">
         <h1 className="text-4xl font-display font-bold text-foreground">Today</h1>
         <button
           onClick={() => setPickingPriorities(true)}
@@ -171,6 +178,10 @@ export default function Today() {
           <Star className="w-4 h-4" />
           Pick top 3
         </button>
+      </div>
+
+      <div className="mb-8">
+        <AreaFilterBar value={areaFilter} onChange={setAreaFilter} />
       </div>
 
       {allEmpty && (

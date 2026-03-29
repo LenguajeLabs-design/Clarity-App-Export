@@ -63,8 +63,8 @@ export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
             title={item.isQuickWin ? "Remove quick win" : "Quick win"}
             className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
               item.isQuickWin
-                ? "text-amber-500 bg-amber-50"
-                : "text-muted-foreground/30 hover:text-amber-400 hover:bg-amber-50/60"
+                ? "text-amber-500 bg-amber-50 dark:bg-amber-950/40"
+                : "text-muted-foreground/30 hover:text-amber-400 hover:bg-amber-50/60 dark:hover:bg-amber-950/30"
             }`}
           >
             <Zap className="w-4 h-4" />

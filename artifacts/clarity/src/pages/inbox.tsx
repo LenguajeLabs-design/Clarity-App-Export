@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CapturedItem, ItemType, AreaOfLife, Timing, Project } from "@/lib/types";
 import { format, addDays } from "date-fns";
 import { AREA_COLOR } from "@/lib/colors";
+import { AreaFilterBar, AreaFilter } from "@/components/area-filter-bar";
 
 // ─── Choice definitions (max 3 visible per step) ─────────────────────────────
 
@@ -98,6 +99,7 @@ export default function Inbox() {
   const [draft, setDraft] = useState<TriageDraft>({});
   const [nextActionText, setNextActionText] = useState('');
   const [waitingText, setWaitingText] = useState('');
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>(null);
 
   const item = untriaged[index];
 
@@ -243,31 +245,76 @@ export default function Inbox() {
 
   // ─── Landing screen ───────────────────────────────────────────────────────
   if (!triageStarted || !item) {
+    const filteredUntriaged = areaFilter
+      ? untriaged.filter((i: CapturedItem) => i.area === areaFilter)
+      : untriaged;
+
     return (
-      <div className="flex flex-col h-full items-center justify-center p-6 text-center animate-in fade-in duration-500">
-        <div className="w-24 h-24 bg-primary/10 rounded-[2rem] flex items-center justify-center text-primary mb-8 shadow-inner">
-          {untriaged.length > 0 ? <InboxIcon className="w-12 h-12" /> : <Sparkles className="w-12 h-12" />}
-        </div>
+      <div className="flex flex-col h-full p-6 animate-in fade-in duration-500">
         {untriaged.length > 0 ? (
           <>
-            <h1 className="text-3xl font-display font-bold mb-3">
-              You have {untriaged.length} {untriaged.length === 1 ? "thing" : "things"} to sort
-            </h1>
-            <p className="text-muted-foreground text-lg mb-12">
-              Take a breath. We'll do this one at a time.
-            </p>
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary flex-shrink-0">
+                <InboxIcon className="w-7 h-7" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-display font-bold text-foreground">
+                  {untriaged.length} {untriaged.length === 1 ? "thing" : "things"} to sort
+                </h1>
+                <p className="text-muted-foreground text-sm">Take a breath. We'll do this one at a time.</p>
+              </div>
+            </div>
+
+            {/* Area filter */}
+            <div className="mb-4">
+              <AreaFilterBar value={areaFilter} onChange={setAreaFilter} />
+            </div>
+
+            {/* Preview list */}
+            <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2 mb-6">
+              {filteredUntriaged.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8 text-sm">
+                  No items in this area yet.
+                </p>
+              ) : (
+                filteredUntriaged.map((i: CapturedItem) => {
+                  const areaColor = i.area ? AREA_COLOR[i.area] : undefined;
+                  return (
+                    <div
+                      key={i.id}
+                      className="flex items-center gap-3 bg-card rounded-xl border border-border/60 px-4 py-3 min-h-[52px] overflow-hidden relative"
+                    >
+                      {areaColor && (
+                        <div
+                          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl"
+                          style={{ backgroundColor: areaColor }}
+                        />
+                      )}
+                      <div className="w-5 h-5 rounded-full border-2 border-border/60 flex-shrink-0 ml-1" />
+                      <span className="text-base text-foreground font-medium leading-snug line-clamp-2">{i.text}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* CTA */}
             <Button
               onClick={() => setTriageStarted(true)}
-              className="h-16 px-12 text-xl rounded-2xl shadow-lg shadow-primary/20 hover:-translate-y-1 transition-all"
+              className="h-16 text-xl rounded-2xl shadow-lg shadow-primary/20 hover:-translate-y-1 transition-all w-full flex-shrink-0"
             >
               Let's go →
             </Button>
           </>
         ) : (
-          <>
+          <div className="flex flex-col items-center justify-center flex-1 text-center">
+            <div className="w-24 h-24 bg-primary/10 rounded-[2rem] flex items-center justify-center text-primary mb-8 shadow-inner">
+              <Sparkles className="w-12 h-12" />
+            </div>
             <h1 className="text-3xl font-display font-bold mb-3">You're all caught up.</h1>
             <p className="text-muted-foreground text-lg">Nothing waiting in your inbox.</p>
-          </>
+          </div>
         )}
       </div>
     );

@@ -19,6 +19,9 @@ import {
   Trash2,
   RotateCcw,
   ShieldAlert,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import type { GitHubSyncData } from "@/lib/github-sync";
 
@@ -444,6 +447,36 @@ export default function Settings() {
   return (
     <div className="p-6 animate-in fade-in duration-500">
       <h1 className="text-4xl font-display font-bold mb-10 text-foreground">Settings</h1>
+
+      {/* Appearance — theme toggle */}
+      <div className="bg-card p-6 rounded-2xl border border-border/60 shadow-sm mb-6">
+        <h3 className="text-base font-semibold text-muted-foreground uppercase tracking-wider mb-4">Appearance</h3>
+        <div className="flex gap-3">
+          {(
+            [
+              { value: 'light', label: 'Light',     Icon: Sun     },
+              { value: 'auto',  label: 'Automatic', Icon: Monitor },
+              { value: 'dark',  label: 'Dark',      Icon: Moon    },
+            ] as const
+          ).map(({ value, label, Icon }) => {
+            const active = (settings.theme ?? 'auto') === value;
+            return (
+              <button
+                key={value}
+                onClick={() => updateSettings({ ...settings, theme: value })}
+                className={`flex-1 flex flex-col items-center gap-2 py-4 rounded-2xl border-2 text-sm font-medium transition-all min-h-[80px] ${
+                  active
+                    ? 'border-primary/50 bg-primary/5 text-primary'
+                    : 'border-border/60 text-muted-foreground hover:border-border hover:bg-muted/30'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Accessibility toggles */}
       <div className="flex flex-col gap-4 mb-12">

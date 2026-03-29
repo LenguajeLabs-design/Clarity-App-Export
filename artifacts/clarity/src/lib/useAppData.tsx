@@ -45,7 +45,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useLocalStorage<CapturedItem[]>('clarity_items', []);
   const [projects, setProjects] = useLocalStorage<Project[]>('clarity_projects', []);
   const [settings, setSettings] = useLocalStorage<UserSettings>('clarity_settings', {
-    largeText: false, highContrast: false, reducedMotion: false,
+    largeText: false, highContrast: false, reducedMotion: false, theme: 'auto',
   });
 
   const { userId, setSyncing, setSynced, setSyncError } = useSyncStatus();

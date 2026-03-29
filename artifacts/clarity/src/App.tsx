@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SyncStatusProvider } from "@/lib/useSyncStatus";
 import { GitHubSyncProvider } from "@/lib/useGitHubSync";
 import { AppDataProvider } from "@/lib/useAppData";
+import { ThemeSync } from "@/lib/useTheme";
 import { AppShell } from "@/components/app-shell";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -43,6 +44,7 @@ function App() {
         {/* GitHubSyncProvider — GitHub sync state (user-triggered) */}
         <GitHubSyncProvider>
           <AppDataProvider>
+            <ThemeSync />
             <TooltipProvider>
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                 <Router />
