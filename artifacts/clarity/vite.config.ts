@@ -26,8 +26,19 @@ if (!basePath) {
   );
 }
 
+// Forward VITE_* secrets from process.env so Vite can embed them in the bundle.
+// Replit stores them as secrets (process.env), not as Vite env vars, so we
+// manually inject them here at build/dev time.
+const define: Record<string, string> = {};
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith('VITE_')) {
+    define[`import.meta.env.${key}`] = JSON.stringify(process.env[key]);
+  }
+}
+
 export default defineConfig({
   base: basePath,
+  define,
   plugins: [
     react(),
     tailwindcss(),
