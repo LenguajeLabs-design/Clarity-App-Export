@@ -5,13 +5,13 @@ import { CapturedItem, Project } from './types';
 // to the browser.
 
 async function callSyncApi(
-  deviceId: string,
+  userId: string,
   payload: { items?: CapturedItem[]; projects?: Project[] },
 ): Promise<void> {
   const res = await fetch('/api/clarity/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceId, ...payload }),
+    body: JSON.stringify({ userId, ...payload }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
