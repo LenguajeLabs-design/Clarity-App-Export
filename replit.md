@@ -93,29 +93,32 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 
 ### `artifacts/clarity` (`@workspace/clarity`)
 
-Mobile-first ADHD task manager app built with React + Vite. Pure localStorage, no backend.
+Mobile-first ADHD task manager app built with React + Vite. Primary storage is localStorage; Supabase and GitHub provide optional cloud sync.
 
 **Features:**
 - **Quick Capture** (`/`) — single-item textarea; "Brain dump mode" for rapid multi-item capture (numbered list, Enter to add lines, batch save to inbox)
-- **Inbox Triage** (`/inbox`) — 5-step triage wizard (one item at a time, max 3 choices per screen):
-  1. Type: task / project / event or note
-  2. Multi-step check for tasks (suggests converting to project if multi-step)
-  3. Area of life: Work / Family / Home or personal
-  4. Next visible action (text input — be specific)
-  5. Timing: Today / This week / Later
-  6. Waiting on: prompts for a person's name if delegated
-  7. Action: Do it today / Schedule it / Add to a project / Not yet / Toss it
-- **Today** (`/today`) — "Pick top 3" interactive priority picker (full-screen, max 3 selectable); "Waiting on" section; "Top 3 Priorities" section
+- **Inbox Triage** (`/inbox`) — 5-step triage wizard (one item at a time, max 3 choices per screen); area filter bar (All/Work/Home/Family/Personal)
+- **Today** (`/today`) — "Pick top 3" interactive priority picker; area filter bar; "Waiting on" section
 - **Projects** (`/projects`) — cards with status segmented controls; inline next-action editing
 - **Upcoming** (`/upcoming`) — grouped by day using date-fns
-- **Review** (`/review`) — 5-step weekly review wizard: inbox → projects → waiting on → pick priorities → weekly checklist
-- **Settings** (`/settings`) — 3 accessibility toggles (bigger text, high contrast, less motion) applied as CSS classes on `<html>`
+- **Review** (`/review`) — 5-step weekly review wizard
+- **Settings** (`/settings`) — Appearance (Light/Auto/Dark theme), 3 accessibility toggles, Import data (JSON file upload), GitHub sync, Supabase sync
+
+**Sync:**
+- **Supabase** (background, automatic) — anonymous auth via `signInAnonymously()`; upserts items+projects on every mutation; tables: `clarity_items`, `clarity_projects` with RLS (user_id = auth.uid()). Requires `VITE_SUPABASE_URL` (https://xxx.supabase.co) and `VITE_SUPABASE_ANON_KEY` (JWT eyJhbGci... format — NOT the sb_publishable_ key). Anonymous sign-ins must be enabled in Supabase Auth settings.
+- **GitHub** (user-triggered) — stores `clarity-data.json` in a private repo; latest-write-wins; PAT with Contents read+write permission.
+
+**Import:** Settings page has a JSON importer that handles localStorage dump format (`clarity_items`, `clarity_projects` keys) and GitHub sync format (`{ items, projects, settings, syncedAt }`).
+
+**Theme:** `ThemeSync` component reads `settings.theme` ('light'|'dark'|'auto') and toggles `.dark` class on `<html>`.
+
+**Vite secrets:** `VITE_*` Replit secrets are injected at build time via the `define` block in `vite.config.ts` (reads `process.env.VITE_*`). Must restart Vite after changing secrets.
+
+**localStorage keys:** `clarity_items`, `clarity_projects`, `clarity_settings`, `clarity_github_config`, `clarity_github_backup`, `clarity_last_modified`, `clarity_migrated`, `clarity_supabase_auth`
 
 **Data model key fields on `CapturedItem`:** `waitingOn: string | null`, `nextAction: string | null`, `isPriority: boolean`
 
-**Tech:** React 18, Vite, Tailwind CSS, framer-motion, date-fns, uuid, shadcn/ui, wouter
-
-**Seed data:** 10 items (teacher/parent persona), 4 projects — uses `clarity_seeded_v2` localStorage key
+**Tech:** React 18, Vite, Tailwind CSS, framer-motion, date-fns, uuid, shadcn/ui, wouter, @supabase/supabase-js v2.100+
 
 ### `scripts` (`@workspace/scripts`)
 
