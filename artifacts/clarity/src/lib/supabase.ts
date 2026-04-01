@@ -17,6 +17,19 @@ function isValidHttpUrl(s: string | undefined): boolean {
 
 export const isSupabaseConfigured = Boolean(isValidHttpUrl(supabaseUrl) && supabaseAnonKey);
 
+// If the anon key changed since the last session was created, the cached session
+// token will be rejected by PostgREST with "Invalid API key". Clear it so the
+// app signs in fresh with the current key.
+const KEY_FINGERPRINT_STORAGE = 'clarity_supabase_key_fp';
+if (isSupabaseConfigured && typeof localStorage !== 'undefined') {
+  const fingerprint = supabaseAnonKey!.slice(0, 24);
+  const stored = localStorage.getItem(KEY_FINGERPRINT_STORAGE);
+  if (stored !== null && stored !== fingerprint) {
+    localStorage.removeItem('clarity_supabase_auth');
+  }
+  localStorage.setItem(KEY_FINGERPRINT_STORAGE, fingerprint);
+}
+
 let _client: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
