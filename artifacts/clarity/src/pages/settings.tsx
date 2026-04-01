@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
 import { useGitHubSync } from "@/lib/useGitHubSync";
@@ -22,6 +22,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Upload,
 } from "lucide-react";
 import type { GitHubSyncData } from "@/lib/github-sync";
 
@@ -334,6 +335,117 @@ function GitHubSyncSection() {
   );
 }
 
+// ─── Import data section ──────────────────────────────────────────────────────
+
+function ImportDataSection() {
+  const { replaceAllData } = useAppData();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [state, setState] = useState<'idle' | 'success' | 'error'>('idle');
+  const [message, setMessage] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+
+  function processFile(file: File) {
+    if (!file.name.endsWith('.json')) {
+      setState('error');
+      setMessage('Please choose a .json file.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string);
+
+        let items, projects, settings;
+
+        if (Array.isArray(parsed)) {
+          // Raw items array
+          items = parsed;
+          projects = [];
+          settings = { largeText: false, highContrast: false, reducedMotion: false };
+        } else if (parsed.items && Array.isArray(parsed.items)) {
+          // Clarity GitHub sync format: { items, projects, settings, syncedAt }
+          items = parsed.items;
+          projects = Array.isArray(parsed.projects) ? parsed.projects : [];
+          settings = parsed.settings ?? { largeText: false, highContrast: false, reducedMotion: false };
+        } else {
+          throw new Error('Unrecognized format — expected a Clarity export or an items array.');
+        }
+
+        const activeItems = (items as Array<{ isDeleted?: boolean }>).filter(i => !i.isDeleted).length;
+        replaceAllData(items, projects, settings);
+        setState('success');
+        setMessage(
+          `Imported ${activeItems} task${activeItems !== 1 ? 's' : ''}` +
+          (projects.length ? ` and ${projects.length} project${projects.length !== 1 ? 's' : ''}` : '') +
+          '.'
+        );
+      } catch (err) {
+        setState('error');
+        setMessage(err instanceof Error ? err.message : 'Could not parse the file.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) processFile(file);
+  }
+
+  return (
+    <div className="bg-card p-5 rounded-2xl border border-border/60 shadow-sm mb-4">
+      <div className="flex items-center gap-2 mb-1">
+        <Upload className="w-4 h-4 text-foreground" />
+        <h3 className="text-base font-semibold text-foreground">Import data</h3>
+      </div>
+      <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+        Load tasks from a Clarity JSON export. Your existing data will be replaced.
+      </p>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        className="sr-only"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) processFile(f); e.target.value = ''; }}
+      />
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl py-6 cursor-pointer transition-all ${
+          isDragging
+            ? 'border-primary bg-primary/5'
+            : 'border-border/60 hover:border-border hover:bg-muted/30'
+        }`}
+      >
+        <Upload className={`w-6 h-6 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+        <span className="text-sm text-muted-foreground">
+          {isDragging ? 'Drop to import' : 'Tap to choose file, or drag & drop'}
+        </span>
+        <span className="text-xs text-muted-foreground/60">.json</span>
+      </div>
+
+      {state === 'success' && (
+        <div className="flex items-center gap-2 mt-3 text-sm text-green-700">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          {message}
+        </div>
+      )}
+      {state === 'error' && (
+        <div className="flex items-start gap-2 mt-3 p-2.5 rounded-xl bg-destructive/10">
+          <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-destructive">{message}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Backup restore section ───────────────────────────────────────────────────
 
 function RestoreBackupSection() {
@@ -495,6 +607,9 @@ export default function Settings() {
       </div>
 
       <div className="h-px bg-border/60 w-full mb-8" />
+
+      {/* Import */}
+      <ImportDataSection />
 
       {/* Sync sections */}
       <div className="mb-8 flex flex-col gap-4">
