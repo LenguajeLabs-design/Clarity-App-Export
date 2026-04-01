@@ -357,6 +357,13 @@ function ImportDataSection() {
 
         let items, projects, settings;
 
+        // Helper: a value may itself be a JSON string (localStorage dump style)
+        const parseVal = (v: unknown) => {
+          if (v === undefined || v === null) return null;
+          if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }
+          return v;
+        };
+
         if (Array.isArray(parsed)) {
           // Raw items array
           items = parsed;
@@ -367,8 +374,15 @@ function ImportDataSection() {
           items = parsed.items;
           projects = Array.isArray(parsed.projects) ? parsed.projects : [];
           settings = parsed.settings ?? { largeText: false, highContrast: false, reducedMotion: false };
+        } else if (parsed.clarity_items !== undefined || parsed.clarity_projects !== undefined) {
+          // localStorage dump format: { clarity_items: "[...]", clarity_projects: "[...]", clarity_settings: "{...}", ... }
+          items = parseVal(parsed.clarity_items) ?? [];
+          projects = parseVal(parsed.clarity_projects) ?? [];
+          settings = parseVal(parsed.clarity_settings) ?? { largeText: false, highContrast: false, reducedMotion: false };
+          if (!Array.isArray(items)) items = [];
+          if (!Array.isArray(projects)) projects = [];
         } else {
-          throw new Error('Unrecognized format — expected a Clarity export or an items array.');
+          throw new Error('Unrecognized format — expected a Clarity export, localStorage dump, or items array.');
         }
 
         const activeItems = (items as Array<{ isDeleted?: boolean }>).filter(i => !i.isDeleted).length;
