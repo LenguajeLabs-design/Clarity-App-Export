@@ -1,45 +1,25 @@
 import { CapturedItem, Project } from './types';
-import { supabase } from './supabase';
 
-// ─── Field Mappers ────────────────────────────────────────────────────────────
+// All Supabase writes go through /api/clarity/sync on the API server.
+// The server uses the service_role key safely server-side and never exposes it
+// to the browser.
 
-export function itemToDb(item: CapturedItem, userId: string) {
-  return {
-    id: item.id,
-    user_id: userId,
-    text: item.text,
-    created_at: item.createdAt,
-    updated_at: new Date().toISOString(),
-    type: item.type,
-    area: item.area,
-    timing: item.timing,
-    is_triaged: item.isTriaged,
-    is_deleted: item.isDeleted,
-    is_priority: item.isPriority,
-    is_quick_win: item.isQuickWin,
-    is_completed: item.isCompleted,
-    scheduled_date: item.scheduledDate,
-    project_id: item.projectId,
-    next_action: item.nextAction,
-    waiting_on: item.waitingOn,
-  };
+async function callSyncApi(
+  deviceId: string,
+  payload: { items?: CapturedItem[]; projects?: Project[] },
+): Promise<void> {
+  const res = await fetch('/api/clarity/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId, ...payload }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
 }
 
-export function projectToDb(project: Project, userId: string) {
-  return {
-    id: project.id,
-    user_id: userId,
-    title: project.title,
-    area: project.area,
-    due_date: project.dueDate,
-    next_action: project.nextAction,
-    status: project.status,
-    created_at: project.createdAt,
-    updated_at: new Date().toISOString(),
-  };
-}
-
-// ─── Sync Helpers (fire-and-forget) ──────────────────────────────────────────
+// ─── Sync Helpers (fire-and-forget wrappers) ─────────────────────────────────
 
 export async function syncItem(
   item: CapturedItem,
@@ -48,13 +28,10 @@ export async function syncItem(
   setSynced: () => void,
   setSyncError: () => void,
 ): Promise<void> {
-  if (!supabase || !userId) return;
+  if (!userId) return;
   setSyncing();
   try {
-    const { error } = await supabase
-      .from('clarity_items')
-      .upsert(itemToDb(item, userId), { onConflict: 'id' });
-    if (error) throw error;
+    await callSyncApi(userId, { items: [item] });
     setSynced();
   } catch (e) {
     console.error('[Clarity] sync item error:', e);
@@ -69,14 +46,10 @@ export async function syncItems(
   setSynced: () => void,
   setSyncError: () => void,
 ): Promise<void> {
-  if (!supabase || !userId || items.length === 0) return;
+  if (!userId || items.length === 0) return;
   setSyncing();
   try {
-    const rows = items.map((i) => itemToDb(i, userId));
-    const { error } = await supabase
-      .from('clarity_items')
-      .upsert(rows, { onConflict: 'id' });
-    if (error) throw error;
+    await callSyncApi(userId, { items });
     setSynced();
   } catch (e) {
     console.error('[Clarity] sync items error:', e);
@@ -91,13 +64,10 @@ export async function syncProject(
   setSynced: () => void,
   setSyncError: () => void,
 ): Promise<void> {
-  if (!supabase || !userId) return;
+  if (!userId) return;
   setSyncing();
   try {
-    const { error } = await supabase
-      .from('clarity_projects')
-      .upsert(projectToDb(project, userId), { onConflict: 'id' });
-    if (error) throw error;
+    await callSyncApi(userId, { projects: [project] });
     setSynced();
   } catch (e) {
     console.error('[Clarity] sync project error:', e);
@@ -112,14 +82,10 @@ export async function syncProjects(
   setSynced: () => void,
   setSyncError: () => void,
 ): Promise<void> {
-  if (!supabase || !userId || projects.length === 0) return;
+  if (!userId || projects.length === 0) return;
   setSyncing();
   try {
-    const rows = projects.map((p) => projectToDb(p, userId));
-    const { error } = await supabase
-      .from('clarity_projects')
-      .upsert(rows, { onConflict: 'id' });
-    if (error) throw error;
+    await callSyncApi(userId, { projects });
     setSynced();
   } catch (e) {
     console.error('[Clarity] sync projects error:', e);
@@ -134,19 +100,11 @@ export async function verifyMigrationCounts(
   expectedItems: number,
   expectedProjects: number,
 ): Promise<boolean> {
-  if (!supabase) return false;
   try {
-    const [{ count: itemCount }, { count: projectCount }] = await Promise.all([
-      supabase
-        .from('clarity_items')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId),
-      supabase
-        .from('clarity_projects')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId),
-    ]);
-    return itemCount === expectedItems && projectCount === expectedProjects;
+    const res = await fetch(`/api/clarity/sync/count/${userId}`);
+    if (!res.ok) return false;
+    const { items, projects } = await res.json() as { items: number; projects: number };
+    return items === expectedItems && projects === expectedProjects;
   } catch (e) {
     console.error('[Clarity] verify migration error:', e);
     return false;

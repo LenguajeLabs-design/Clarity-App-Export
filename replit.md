@@ -104,9 +104,18 @@ Mobile-first ADHD task manager app built with React + Vite. Primary storage is l
 - **Review** (`/review`) — 5-step weekly review wizard
 - **Settings** (`/settings`) — Appearance (Light/Auto/Dark theme), 3 accessibility toggles, Import data (JSON file upload), GitHub sync, Supabase sync
 
-**Sync:**
-- **Supabase** (background, automatic) — anonymous auth via `signInAnonymously()`; upserts items+projects on every mutation; tables: `clarity_items`, `clarity_projects` with RLS (user_id = auth.uid()). Requires `VITE_SUPABASE_URL` (https://xxx.supabase.co) and `VITE_SUPABASE_ANON_KEY` (JWT eyJhbGci... format — NOT the sb_publishable_ key). Anonymous sign-ins must be enabled in Supabase Auth settings.
+**Sync architecture:**
+- **Supabase** (background, automatic) — all DB writes go through `POST /api/clarity/sync` on the API server. The server uses `VITE_SUPABASE_ANON_KEY` (service_role JWT) to write with service_role (bypasses RLS). The browser calls `POST /api/clarity/auth` once on startup to create a real Supabase auth user (satisfies FK constraint on `user_id`); the returned UUID is cached in `clarity_supabase_user_id` in localStorage. No browser-side Supabase client calls DB directly. Tables: `clarity_items`, `clarity_projects`.
 - **GitHub** (user-triggered) — stores `clarity-data.json` in a private repo; latest-write-wins; PAT with Contents read+write permission.
+
+**API server sync endpoints** (`artifacts/api-server/src/routes/clarity-sync.ts`):
+- `POST /api/clarity/auth` — creates Supabase user via admin API using service_role key; returns `{ userId }` (UUID cached client-side)
+- `POST /api/clarity/sync` — accepts `{ userId, items?, projects? }`, upserts to Supabase
+- `GET /api/clarity/sync/count/:userId` — returns `{ items, projects }` counts for migration verification
+
+**Secrets needed:**
+- `VITE_SUPABASE_URL` — the project URL (https://xxx.supabase.co)
+- `VITE_SUPABASE_ANON_KEY` — the service_role JWT key (used server-side only; NOT exposed to browser)
 
 **Import:** Settings page has a JSON importer that handles localStorage dump format (`clarity_items`, `clarity_projects` keys) and GitHub sync format (`{ items, projects, settings, syncedAt }`).
 

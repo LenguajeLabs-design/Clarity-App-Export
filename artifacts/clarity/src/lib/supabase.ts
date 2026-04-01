@@ -1,49 +1,32 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+// Device identity — a stable UUID stored in localStorage, used to request a
+// real Supabase user ID from the API server on first load.
+const DEVICE_ID_KEY = 'clarity_device_id';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-// Guard: only treat Supabase as configured when the URL is actually a valid HTTP/HTTPS URL.
-// If someone pastes an API key into the URL field the app would crash without this check.
-function isValidHttpUrl(s: string | undefined): boolean {
-  if (!s) return false;
-  try {
-    const u = new URL(s);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
   }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
-export const isSupabaseConfigured = Boolean(isValidHttpUrl(supabaseUrl) && supabaseAnonKey);
-
-// If the anon key changed since the last session was created, the cached session
-// token will be rejected by PostgREST with "Invalid API key". Clear it so the
-// app signs in fresh with the current key.
-const KEY_FINGERPRINT_STORAGE = 'clarity_supabase_key_fp';
-if (isSupabaseConfigured && typeof localStorage !== 'undefined') {
-  const fingerprint = supabaseAnonKey!.slice(0, 24);
-  const stored = localStorage.getItem(KEY_FINGERPRINT_STORAGE);
-  if (stored !== null && stored !== fingerprint) {
-    localStorage.removeItem('clarity_supabase_auth');
+export function getDeviceId(): string {
+  if (typeof localStorage === 'undefined') return generateUUID();
+  let id = localStorage.getItem(DEVICE_ID_KEY);
+  if (!id) {
+    id = generateUUID();
+    localStorage.setItem(DEVICE_ID_KEY, id);
   }
-  localStorage.setItem(KEY_FINGERPRINT_STORAGE, fingerprint);
+  return id;
 }
 
-let _client: SupabaseClient | null = null;
+// Cloud sync is always available via the API server.
+// The server holds the Supabase service_role key — no browser-side Supabase
+// client or key is needed.
+export const isSupabaseConfigured = true;
 
-export function getSupabaseClient(): SupabaseClient | null {
-  if (!isSupabaseConfigured) return null;
-  if (!_client) {
-    _client = createClient(supabaseUrl!, supabaseAnonKey!, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        storageKey: 'clarity_supabase_auth',
-      },
-    });
-  }
-  return _client;
-}
-
-export const supabase = getSupabaseClient();
+// Kept for legacy import compatibility. No direct browser ↔ Supabase DB calls.
+export const supabase = null;
+export function getSupabaseClient() { return null; }
