@@ -29,11 +29,11 @@ export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
         style={{ backgroundColor: areaColor ?? "transparent" }}
       />
 
-      <div className="flex items-center flex-1 px-4 py-3 gap-2">
+      <div className="flex items-start flex-1 px-4 py-3 gap-2">
         <button
           onClick={() => completeItem(item.id)}
           aria-label="Mark as done"
-          className="w-12 h-12 rounded-full border-2 border-border flex items-center justify-center flex-shrink-0 hover:border-primary/60 hover:bg-primary/5 transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10"
+          className="w-12 h-12 rounded-full border-2 border-border flex items-center justify-center flex-shrink-0 mt-0.5 hover:border-primary/60 hover:bg-primary/5 transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10"
         >
           <svg
             className="w-4 h-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity"
@@ -46,7 +46,7 @@ export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
           </svg>
         </button>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 py-1">
           <span className="text-lg text-foreground font-medium leading-tight block">{item.text}</span>
           {item.nextAction && (
             <span className="text-sm text-muted-foreground mt-0.5 block truncate">
@@ -61,13 +61,13 @@ export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
             onClick={(e) => { e.stopPropagation(); onMarkQuickWin(); }}
             aria-label={item.isQuickWin ? "Remove quick win" : "Mark as quick win"}
             title={item.isQuickWin ? "Remove quick win" : "Quick win"}
-            className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+            className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all mt-0.5 ${
               item.isQuickWin
                 ? "text-amber-500 bg-amber-50 dark:bg-amber-950/40"
-                : "text-muted-foreground/30 hover:text-amber-400 hover:bg-amber-50/60 dark:hover:bg-amber-950/30"
+                : "text-muted-foreground/55 hover:text-amber-400 hover:bg-amber-50/60 dark:hover:bg-amber-950/30"
             }`}
           >
-            <Zap className="w-4 h-4" />
+            <Zap className="w-5 h-5" />
           </button>
         )}
       </div>
