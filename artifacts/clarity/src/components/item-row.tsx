@@ -3,6 +3,7 @@ import { useAppData } from "@/lib/useAppData";
 import { motion } from "framer-motion";
 import { AREA_COLOR } from "@/lib/colors";
 import { Zap } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface ItemRowProps {
   item: CapturedItem;
@@ -11,7 +12,24 @@ interface ItemRowProps {
 }
 
 export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
-  const { completeItem } = useAppData();
+  const { completeItem, uncompleteItem } = useAppData();
+  const { toast } = useToast();
+
+  const handleComplete = () => {
+    completeItem(item.id);
+    toast({
+      description: "Task done! Nice work.",
+      action: (
+        <button
+          onClick={() => uncompleteItem(item.id)}
+          className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
+        >
+          Undo
+        </button>
+      ),
+      duration: 4000,
+    });
+  };
 
   const areaColor = item.area ? AREA_COLOR[item.area] : undefined;
 
@@ -31,7 +49,7 @@ export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
 
       <div className="flex items-start flex-1 px-4 py-3 gap-2">
         <button
-          onClick={() => completeItem(item.id)}
+          onClick={handleComplete}
           aria-label="Mark as done"
           className="w-12 h-12 rounded-full border-2 border-border flex items-center justify-center flex-shrink-0 mt-0.5 hover:border-primary/60 hover:bg-primary/5 transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10"
         >

@@ -7,6 +7,7 @@ import { CapturedItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { AREA_COLOR } from "@/lib/colors";
+import { useToast } from "@/hooks/use-toast";
 
 const WAITING_COLOR = "#C07A3A";
 
@@ -51,9 +52,26 @@ function StartHereCard({ item, onComplete }: { item: CapturedItem; onComplete: (
 }
 
 export default function Today() {
-  const { items, updateItem, completeItem } = useAppData();
+  const { items, updateItem, completeItem, uncompleteItem } = useAppData();
+  const { toast } = useToast();
   const [pickingPriorities, setPickingPriorities] = useState(false);
   const [areaFilter, setAreaFilter] = useState<AreaFilter>(null);
+
+  const handleCompleteStartHere = (item: CapturedItem) => {
+    completeItem(item.id);
+    toast({
+      description: "Task done! Nice work.",
+      action: (
+        <button
+          onClick={() => uncompleteItem(item.id)}
+          className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
+        >
+          Undo
+        </button>
+      ),
+      duration: 4000,
+    });
+  };
 
   const allTriaged = items.filter(
     (i: CapturedItem) => i.isTriaged && !i.isDeleted && !i.isCompleted
@@ -201,7 +219,7 @@ export default function Today() {
           <motion.div key="start-here" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-10">
             <StartHereCard
               item={startHereItem}
-              onComplete={() => completeItem(startHereItem.id)}
+              onComplete={() => handleCompleteStartHere(startHereItem)}
             />
           </motion.div>
         )}

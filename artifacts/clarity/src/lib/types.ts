@@ -7,6 +7,7 @@ export interface CapturedItem {
   id: string;
   text: string;
   createdAt: string;
+  completedAt: string | null;
   type: ItemType | null;
   area: AreaOfLife | null;
   timing: Timing | null;
@@ -63,6 +64,7 @@ export interface AppData {
   }>) => void;
   updateItem: (id: string, updates: Partial<CapturedItem>) => void;
   completeItem: (id: string) => void;
+  uncompleteItem: (id: string) => void;
   addProject: (p: Omit<Project, 'id' | 'createdAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   updateSettings: (s: UserSettings) => void;

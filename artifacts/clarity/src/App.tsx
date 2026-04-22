@@ -14,6 +14,7 @@ import Today from "@/pages/today";
 import Projects from "@/pages/projects";
 import Upcoming from "@/pages/upcoming";
 import Review from "@/pages/review";
+import Done from "@/pages/done";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -29,6 +30,7 @@ function Router() {
         <Route path="/projects" component={Projects} />
         <Route path="/upcoming" component={Upcoming} />
         <Route path="/review" component={Review} />
+        <Route path="/done" component={Done} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

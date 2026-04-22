@@ -14,6 +14,7 @@ export const BLANK_ITEM = (text: string): CapturedItem => ({
   id: uuidv4(),
   text,
   createdAt: new Date().toISOString(),
+  completedAt: null,
   type: null,
   area: null,
   timing: null,
@@ -93,7 +94,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const completeItem = (id: string) => {
-    updateItem(id, { isCompleted: true });
+    updateItem(id, { isCompleted: true, completedAt: new Date().toISOString() });
+  };
+
+  const uncompleteItem = (id: string) => {
+    updateItem(id, { isCompleted: false, completedAt: null });
   };
 
   const addProject = (p: Omit<Project, 'id' | 'createdAt'>) => {
@@ -140,6 +145,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     addItemsBatchStructured,
     updateItem,
     completeItem,
+    uncompleteItem,
     addProject,
     updateProject,
     updateSettings: setSettings,

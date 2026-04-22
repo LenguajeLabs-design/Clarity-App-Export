@@ -1,14 +1,14 @@
 import { Link, useLocation } from "wouter";
-import { Inbox, Sun, Folder, Calendar, CheckCircle, Settings } from "lucide-react";
+import { Inbox, Sun, Folder, Calendar, CheckCheck, Settings } from "lucide-react";
 
-// Six always-visible tabs matching the Clarity nav spec:
-// Inbox · Today · Projects · Upcoming · Review · Settings
+// Six always-visible tabs:
+// Inbox · Today · Projects · Upcoming · Done · Settings
 const NAV_ITEMS = [
   { href: "/inbox", icon: Inbox, label: "Inbox" },
   { href: "/today", icon: Sun, label: "Today" },
   { href: "/projects", icon: Folder, label: "Projects" },
   { href: "/upcoming", icon: Calendar, label: "Upcoming" },
-  { href: "/review", icon: CheckCircle, label: "Review" },
+  { href: "/done", icon: CheckCheck, label: "Done" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
