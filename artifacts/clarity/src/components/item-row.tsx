@@ -64,8 +64,8 @@ export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
           </svg>
         </button>
 
-        <div className="flex-1 min-w-0 py-1 overflow-hidden">
-          <span className="text-lg text-foreground font-medium leading-tight block">{item.text}</span>
+        <div className="flex-1 min-w-0 py-1" style={{ minWidth: 0 }}>
+          <span className="text-lg text-foreground font-medium leading-tight block break-words">{item.text}</span>
           {item.nextAction && (
             <span className="text-sm text-muted-foreground mt-0.5 block truncate">
               Next: {item.nextAction}
