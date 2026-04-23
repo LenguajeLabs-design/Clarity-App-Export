@@ -39,11 +39,11 @@ export function ItemRow({ item, onMarkQuickWin }: ItemRowProps) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.2 }}
-      className="flex items-center min-h-[64px] bg-card rounded-2xl shadow-sm border border-border/60 hover:shadow-md hover:border-border active:scale-[0.98] transition-all group overflow-hidden"
+      className="flex items-start min-h-[64px] bg-card rounded-2xl shadow-sm border border-border/60 hover:shadow-md hover:border-border active:scale-[0.98] transition-all group"
     >
-      {/* Small left accent — 3px strip colored by area */}
+      {/* Small left accent — 3px strip colored by area, rounded to match card */}
       <div
-        className="w-[3px] self-stretch flex-shrink-0"
+        className="w-[3px] self-stretch flex-shrink-0 rounded-l-2xl"
         style={{ backgroundColor: areaColor ?? "transparent" }}
       />
 
