@@ -48,7 +48,7 @@ router.post("/clarity/auth", async (req, res) => {
     res.json({ userId: data.user.id });
   } catch (e) {
     console.error("[clarity-auth] error:", e);
-    res.status(500).json({ error: String(e) });
+    res.status(500).json({ error: "Auth failed — please try again." });
   }
 });
 
@@ -132,7 +132,7 @@ router.post("/clarity/sync", async (req, res) => {
   }
 
   if (errors.length > 0) {
-    res.status(500).json({ error: errors.join("; ") });
+    res.status(500).json({ error: "Sync failed — please try again." });
     return;
   }
 
