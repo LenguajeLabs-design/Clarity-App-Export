@@ -15,6 +15,24 @@ function getClient() {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ─── Shared helper: verify that deviceId owns userId ─────────────────────────
+// Returns true if the device is the registered owner of the userId.
+// Prevents IDOR by ensuring callers cannot act on arbitrary user IDs.
+async function verifyDeviceOwnsUser(
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+  deviceId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await sb.auth.admin.getUserById(userId);
+    if (error || !data?.user) return false;
+    const stored = data.user.user_metadata?.["clarity_device_id"] as string | undefined;
+    return stored === deviceId;
+  } catch {
+    return false;
+  }
+}
+
 // ─── Auth: create or retrieve a Supabase user for a device UUID ───────────────
 // The client sends its local device UUID; the server mints a real Supabase
 // anonymous user (satisfies FK constraints) and returns the Supabase user ID.
@@ -53,9 +71,11 @@ router.post("/clarity/auth", async (req, res) => {
 });
 
 // ─── Sync: upsert items and/or projects ──────────────────────────────────────
+// Requires deviceId in body; ownership is verified before any writes occur.
 router.post("/clarity/sync", async (req, res) => {
-  const { userId, items, projects } = req.body as {
+  const { userId, deviceId, items, projects } = req.body as {
     userId?: string;
+    deviceId?: string;
     items?: unknown[];
     projects?: unknown[];
   };
@@ -65,9 +85,20 @@ router.post("/clarity/sync", async (req, res) => {
     return;
   }
 
+  if (!deviceId || !UUID_RE.test(deviceId)) {
+    res.status(400).json({ error: "Missing or invalid deviceId" });
+    return;
+  }
+
   const sb = getClient();
   if (!sb) {
     res.status(503).json({ error: "Supabase not configured on server" });
+    return;
+  }
+
+  const authorized = await verifyDeviceOwnsUser(sb, userId, deviceId);
+  if (!authorized) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
@@ -211,6 +242,78 @@ router.post("/clarity/link/redeem", async (req, res) => {
     items: itemsRes.data ?? [],
     projects: projectsRes.data ?? [],
   });
+});
+
+// ─── Fetch: pull all items and projects for a user ───────────────────────────
+// Requires deviceId query param; server verifies it matches the userId's
+// stored device metadata to prevent IDOR access by guessing a userId.
+router.get("/clarity/data/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const deviceId = req.query["deviceId"] as string | undefined;
+
+  if (!userId || !UUID_RE.test(userId)) {
+    res.status(400).json({ error: "Invalid userId" });
+    return;
+  }
+
+  if (!deviceId || !UUID_RE.test(deviceId)) {
+    res.status(400).json({ error: "Missing or invalid deviceId" });
+    return;
+  }
+
+  const sb = getClient();
+  if (!sb) {
+    res.status(503).json({ error: "Supabase not configured on server" });
+    return;
+  }
+
+  const authorized = await verifyDeviceOwnsUser(sb, userId, deviceId);
+  if (!authorized) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const [itemsResult, projectsResult] = await Promise.all([
+    sb
+      .from("clarity_items")
+      .select("*")
+      .eq("user_id", userId)
+      .neq("is_deleted", true),
+    sb
+      .from("clarity_projects")
+      .select("*")
+      .eq("user_id", userId)
+      .neq("status", "deleted"),
+  ]);
+
+  if (itemsResult.error || projectsResult.error) {
+    console.error("[clarity-data] error:", itemsResult.error?.message, projectsResult.error?.message);
+    res.status(500).json({ error: "Failed to fetch data" });
+    return;
+  }
+
+  const items = (itemsResult.data ?? []).map((row: Record<string, unknown>) => ({
+    id: row["id"],
+    text: row["text"],
+    type: row["type"],
+    area: row["area"],
+    timing: row["timing"],
+    done: row["is_completed"] ?? false,
+    doneAt: row["updated_at"] && row["is_completed"] ? row["updated_at"] : null,
+    projectId: row["project_id"] ?? null,
+    createdAt: row["created_at"],
+    updatedAt: row["updated_at"],
+  }));
+
+  const projects = (projectsResult.data ?? []).map((row: Record<string, unknown>) => ({
+    id: row["id"],
+    name: row["title"],
+    area: row["area"] ?? null,
+    createdAt: row["created_at"],
+    updatedAt: row["updated_at"],
+  }));
+
+  res.json({ items, projects });
 });
 
 // ─── Count: verify migration ──────────────────────────────────────────────────

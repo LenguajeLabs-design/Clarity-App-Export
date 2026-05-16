@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "nYs5s5l4jpD4IPC-FyNTD"
+uri = "file://artifacts/clarity-mobile/assets/images/icon.png"
+type = "image"
+title = "generated_image"
