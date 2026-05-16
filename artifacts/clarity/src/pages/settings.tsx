@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
 import { useGitHubSync } from "@/lib/useGitHubSync";
@@ -23,8 +23,221 @@ import {
   Moon,
   Monitor,
   Upload,
+  Smartphone,
+  Link2,
+  Copy,
+  Check,
 } from "lucide-react";
 import type { GitHubSyncData } from "@/lib/github-sync";
+
+// ─── Cross-device sync section ────────────────────────────────────────────────
+
+const SUPABASE_USER_ID_KEY = 'clarity_supabase_user_id';
+
+function CrossDeviceSyncSection() {
+  const { userId, isSupabaseConfigured } = useSyncStatus();
+  const { replaceAllData, settings } = useAppData();
+
+  // Generate-code side
+  const [genState, setGenState] = useState<'idle' | 'loading' | 'showing'>('idle');
+  const [code, setCode] = useState('');
+  const [codeExpiry, setCodeExpiry] = useState<Date | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [copied, setCopied] = useState(false);
+
+  // Redeem-code side
+  const [linkInput, setLinkInput] = useState('');
+  const [linkState, setLinkState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [linkError, setLinkError] = useState('');
+
+  useEffect(() => {
+    if (!codeExpiry) return;
+    const tick = () => {
+      const s = Math.max(0, Math.round((codeExpiry.getTime() - Date.now()) / 1000));
+      setSecondsLeft(s);
+      if (s === 0) { setGenState('idle'); setCode(''); setCodeExpiry(null); }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [codeExpiry]);
+
+  if (!isSupabaseConfigured) return null;
+
+  async function handleGenerate() {
+    if (!userId) return;
+    setGenState('loading');
+    try {
+      const res = await fetch('/api/clarity/link/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json() as { code?: string; expiresAt?: string; error?: string };
+      if (!res.ok) throw new Error(data.error);
+      setCode(data.code!);
+      setCodeExpiry(new Date(data.expiresAt!));
+      setGenState('showing');
+    } catch {
+      setGenState('idle');
+    }
+  }
+
+  function handleCopy() {
+    void navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleRedeem() {
+    const trimmed = linkInput.trim().toUpperCase();
+    if (!trimmed) return;
+    setLinkState('loading');
+    setLinkError('');
+    try {
+      const res = await fetch('/api/clarity/link/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: trimmed }),
+      });
+      const data = await res.json() as {
+        userId?: string;
+        items?: Record<string, unknown>[];
+        projects?: Record<string, unknown>[];
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error ?? 'Invalid or expired code');
+
+      const mappedItems = (data.items ?? []).map(i => ({
+        id: i['id'] as string,
+        text: i['text'] as string,
+        type: i['type'] as string | null,
+        area: i['area'] as string | null,
+        timing: i['timing'] as string | null,
+        isTriaged: Boolean(i['is_triaged']),
+        isDeleted: Boolean(i['is_deleted']),
+        isPriority: Boolean(i['is_priority']),
+        isQuickWin: Boolean(i['is_quick_win']),
+        isCompleted: Boolean(i['is_completed']),
+        scheduledDate: (i['scheduled_date'] as string | null) ?? null,
+        projectId: (i['project_id'] as string | null) ?? null,
+        nextAction: (i['next_action'] as string | null) ?? null,
+        waitingOn: (i['waiting_on'] as string | null) ?? null,
+        createdAt: i['created_at'] as string,
+        completedAt: (i['completed_at'] as string | null) ?? null,
+      }));
+
+      const mappedProjects = (data.projects ?? []).map(p => ({
+        id: p['id'] as string,
+        title: p['title'] as string,
+        area: (p['area'] as string | null) ?? null,
+        dueDate: (p['due_date'] as string | null) ?? null,
+        nextAction: (p['next_action'] as string | null) ?? null,
+        status: (p['status'] as string) ?? 'active',
+        createdAt: p['created_at'] as string,
+      }));
+
+      localStorage.setItem(SUPABASE_USER_ID_KEY, data.userId!);
+      replaceAllData(mappedItems as never, mappedProjects as never, settings);
+      setLinkState('success');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : 'Something went wrong');
+      setLinkState('error');
+    }
+  }
+
+  const mins = Math.ceil(secondsLeft / 60);
+
+  return (
+    <div className="bg-card p-5 rounded-2xl border border-primary/20 shadow-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <Smartphone className="w-4 h-4 text-primary" />
+        <h3 className="text-base font-semibold text-foreground">Sync to another device</h3>
+      </div>
+      <p className="text-sm text-muted-foreground mb-5">
+        Link your phone and PC so they always share the same tasks.
+      </p>
+
+      {/* ── Step 1: generate a code on this device ── */}
+      <div className="mb-5 pb-5 border-b border-border/50">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          Step 1 — On this device, get a code
+        </p>
+        {genState === 'idle' && (
+          <button
+            onClick={() => void handleGenerate()}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 active:opacity-80 transition-opacity"
+          >
+            <Link2 className="w-4 h-4" />
+            Get a link code
+          </button>
+        )}
+        {genState === 'loading' && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" /> Generating…
+          </div>
+        )}
+        {genState === 'showing' && (
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <span className="font-mono text-4xl font-bold tracking-[0.3em] text-foreground select-all">
+                {code}
+              </span>
+              <button
+                onClick={handleCopy}
+                className="p-2 rounded-lg border border-border hover:bg-muted transition-colors"
+                title="Copy code"
+              >
+                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Expires in {secondsLeft < 60 ? `${secondsLeft}s` : `${mins}m`} · One-time use
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Step 2: enter the code on the other device ── */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          Step 2 — On your other device, enter the code
+        </p>
+        {linkState === 'success' ? (
+          <div className="flex items-center gap-2 text-sm text-green-700 font-medium">
+            <CheckCircle2 className="w-4 h-4" />
+            Linked! Reloading your data…
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              value={linkInput}
+              onChange={e => setLinkInput(e.target.value.toUpperCase())}
+              onKeyDown={e => { if (e.key === 'Enter') void handleRedeem(); }}
+              maxLength={6}
+              placeholder="ABC123"
+              className="flex-1 font-mono uppercase tracking-widest text-center text-lg px-3 py-2.5 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <button
+              onClick={() => void handleRedeem()}
+              disabled={linkState === 'loading' || linkInput.trim().length < 6}
+              className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 active:opacity-80 disabled:opacity-50 transition-opacity"
+            >
+              {linkState === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Link'}
+            </button>
+          </div>
+        )}
+        {linkState === 'error' && (
+          <p className="text-sm text-destructive mt-2 flex items-center gap-1.5">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            {linkError}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Supabase section (kept for existing users) ───────────────────────────────
 
@@ -627,6 +840,7 @@ export default function Settings() {
 
       {/* Sync sections */}
       <div className="mb-8 flex flex-col gap-4">
+        <CrossDeviceSyncSection />
         <GitHubSyncSection />
         <SupabaseSyncSection />
       </div>
