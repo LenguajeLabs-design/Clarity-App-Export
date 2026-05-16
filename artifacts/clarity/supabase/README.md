@@ -49,9 +49,9 @@ You should see "Success. No rows returned."
    | Key | Value |
    |-----|-------|
    | `VITE_SUPABASE_URL` | Your Project URL from step 4 |
-   | `VITE_SUPABASE_ANON_KEY` | Your anon key from step 4 |
+   | `SUPABASE_SERVICE_KEY` | Your service_role key from step 4 (server-side only — never expose to the browser) |
 
-3. Restart the **Clarity web** workflow so Vite picks up the new env vars.
+3. Restart the **API Server** workflow so it picks up the new secret.
 
 ---
 
