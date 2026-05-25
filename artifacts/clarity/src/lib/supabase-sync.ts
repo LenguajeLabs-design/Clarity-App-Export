@@ -1,4 +1,5 @@
 import { CapturedItem, Project } from './types';
+import { getDeviceId } from './supabase';
 
 // All Supabase writes go through /api/clarity/sync on the API server.
 // The server uses the service_role key safely server-side and never exposes it
@@ -11,7 +12,7 @@ async function callSyncApi(
   const res = await fetch('/api/clarity/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, ...payload }),
+    body: JSON.stringify({ userId, deviceId: getDeviceId(), ...payload }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };

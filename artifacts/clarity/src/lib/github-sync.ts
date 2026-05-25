@@ -6,8 +6,8 @@
  *   2. Compare syncedAt timestamps — whichever is newer is the source of truth
  *   3. Push the winner back to GitHub with a fresh syncedAt
  *
- * The sha returned by GET must be included in the subsequent PUT to prove we
- * saw the latest version (prevents blind overwrites on GitHub's side).
+ * All GitHub API calls are proxied through /api/github/* on the API server.
+ * This means GitHub sync works even when api.github.com is blocked (e.g. China).
  */
 
 import type { CapturedItem, Project, UserSettings } from './types';
@@ -53,21 +53,21 @@ export interface GitHubSyncData {
   settings: UserSettings;
 }
 
-// ─── GitHub Contents API helpers ──────────────────────────────────────────────
+// ─── Server-proxied GitHub helpers ───────────────────────────────────────────
+// All requests go to /api/github/* so they work even if api.github.com is
+// blocked in the user's region.
 
-const API_BASE = 'https://api.github.com';
-
-function apiHeaders(token: string) {
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'Content-Type': 'application/json',
-  };
-}
-
-function fileUrl(config: GitHubConfig) {
-  return `${API_BASE}/repos/${config.repo}/contents/${config.filePath}`;
+async function proxyPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  const res = await fetch(`/api/github/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json() as T & { error?: string };
+  if (!res.ok) {
+    throw new Error((json as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return json;
 }
 
 /** Safely encode a UTF-8 string to base64 (handles emoji / non-ASCII) */
@@ -83,34 +83,26 @@ function fromBase64(b64: string): string {
 // ─── Pull ─────────────────────────────────────────────────────────────────────
 
 /**
- * Fetch the current data file from GitHub.
+ * Fetch the current data file from GitHub (via server proxy).
  * Returns null if the file doesn't exist yet (first ever sync).
  * Throws on network or auth errors.
  */
 export async function pullFromGitHub(
   config: GitHubConfig,
 ): Promise<{ data: GitHubSyncData; sha: string } | null> {
-  const res = await fetch(fileUrl(config), {
-    headers: apiHeaders(config.token),
-  });
-
-  if (res.status === 404) return null; // file doesn't exist yet — first sync
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`GitHub pull failed (${res.status}): ${body || res.statusText}`);
-  }
-
-  const json = (await res.json()) as { content: string; sha: string };
-  // GitHub returns base64 content with newlines every 60 chars
-  const content = fromBase64(json.content.replace(/\n/g, ''));
-  return { data: JSON.parse(content) as GitHubSyncData, sha: json.sha };
+  const result = await proxyPost<{ exists: boolean; content?: string; sha?: string }>(
+    'pull',
+    { token: config.token, repo: config.repo, filePath: config.filePath },
+  );
+  if (!result.exists) return null;
+  const content = fromBase64(result.content!.replace(/\n/g, ''));
+  return { data: JSON.parse(content) as GitHubSyncData, sha: result.sha! };
 }
 
 // ─── Push ─────────────────────────────────────────────────────────────────────
 
 /**
- * Write data to GitHub, creating or updating the file.
+ * Write data to GitHub (via server proxy), creating or updating the file.
  * Pass sha when updating (omit on first create).
  */
 export async function pushToGitHub(
@@ -118,22 +110,15 @@ export async function pushToGitHub(
   data: GitHubSyncData,
   sha?: string,
 ): Promise<void> {
-  const body: Record<string, string> = {
+  const body: Record<string, unknown> = {
+    token: config.token,
+    repo: config.repo,
+    filePath: config.filePath,
     message: `Clarity sync — ${new Date().toLocaleString()}`,
     content: toBase64(JSON.stringify(data, null, 2)),
   };
   if (sha) body.sha = sha;
-
-  const res = await fetch(fileUrl(config), {
-    method: 'PUT',
-    headers: apiHeaders(config.token),
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`GitHub push failed (${res.status}): ${text || res.statusText}`);
-  }
+  await proxyPost('push', body);
 }
 
 // ─── Full sync ────────────────────────────────────────────────────────────────
@@ -184,10 +169,7 @@ export async function syncWithGitHub(
     // backup failure is non-fatal
   }
 
-  // Step 3 — push winner, preserving its syncedAt (= when data was last modified).
-  // Do NOT override syncedAt to now — that would make every sync appear "newest"
-  // regardless of when the data was actually changed, breaking the comparison
-  // on the next sync from a different device.
+  // Step 3 — push winner
   await pushToGitHub(config, winner, sha);
 
   return { mergedData: winner, hadRemoteUpdate };
@@ -200,19 +182,9 @@ export async function syncWithGitHub(
  * Returns the user login on success, throws on failure.
  */
 export async function validateGitHubConfig(config: GitHubConfig): Promise<string> {
-  // Check token is valid
-  const userRes = await fetch(`${API_BASE}/user`, {
-    headers: apiHeaders(config.token),
+  const result = await proxyPost<{ login: string }>('validate', {
+    token: config.token,
+    repo: config.repo,
   });
-  if (!userRes.ok) throw new Error(`Invalid token (${userRes.status})`);
-  const user = (await userRes.json()) as { login: string };
-
-  // Check repo is accessible
-  const repoRes = await fetch(`${API_BASE}/repos/${config.repo}`, {
-    headers: apiHeaders(config.token),
-  });
-  if (repoRes.status === 404) throw new Error(`Repository "${config.repo}" not found`);
-  if (!repoRes.ok) throw new Error(`Cannot access repository (${repoRes.status})`);
-
-  return user.login;
+  return result.login;
 }
