@@ -16,8 +16,9 @@ function getClient() {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─── Shared helper: verify that deviceId owns userId ─────────────────────────
-// Returns true if the device is the registered owner of the userId.
-// Prevents IDOR by ensuring callers cannot act on arbitrary user IDs.
+// Returns true if the device is the primary owner OR an authorized linked device.
+// authorized_devices is a list added by /clarity/link/redeem when a second device
+// links to this account via a link code.
 async function verifyDeviceOwnsUser(
   sb: ReturnType<typeof createClient>,
   userId: string,
@@ -26,8 +27,12 @@ async function verifyDeviceOwnsUser(
   try {
     const { data, error } = await sb.auth.admin.getUserById(userId);
     if (error || !data?.user) return false;
-    const stored = data.user.user_metadata?.["clarity_device_id"] as string | undefined;
-    return stored === deviceId;
+    const meta = data.user.user_metadata ?? {};
+    const primary = meta["clarity_device_id"] as string | undefined;
+    const authorized = meta["authorized_devices"] as string[] | undefined;
+    if (primary === deviceId) return true;
+    if (Array.isArray(authorized) && authorized.includes(deviceId)) return true;
+    return false;
   } catch {
     return false;
   }
@@ -207,13 +212,18 @@ router.post("/clarity/link/generate", (req, res) => {
   res.json({ code, expiresAt: new Date(expiresAt).toISOString() });
 });
 
-// Redeem a link code: return the userId + all their data so the new device
-// can adopt the account and replace its local state.
+// Redeem a link code: register the new device as authorized, return userId + data.
+// deviceId is the *new* device's ID — it gets added to authorized_devices on the
+// account so future sync calls from this device pass the ownership check.
 router.post("/clarity/link/redeem", async (req, res) => {
-  const { code } = req.body as { code?: string };
+  const { code, deviceId } = req.body as { code?: string; deviceId?: string };
   const normalized = (code ?? '').toUpperCase().trim();
   if (!normalized || !/^[A-Z2-9]{6}$/.test(normalized)) {
     res.status(400).json({ error: "Invalid code format" });
+    return;
+  }
+  if (!deviceId || !UUID_RE.test(deviceId)) {
+    res.status(400).json({ error: "Missing or invalid deviceId" });
     return;
   }
   const entry = linkCodes.get(normalized);
@@ -229,6 +239,16 @@ router.post("/clarity/link/redeem", async (req, res) => {
   }
 
   const { userId } = entry;
+
+  // Register deviceId as authorized on the account so future syncs pass
+  const { data: userData } = await sb.auth.admin.getUserById(userId);
+  const existing = (userData?.user?.user_metadata?.["authorized_devices"] as string[] | undefined) ?? [];
+  if (!existing.includes(deviceId)) {
+    await sb.auth.admin.updateUserById(userId, {
+      user_metadata: { authorized_devices: [...existing, deviceId] },
+    });
+  }
+
   const [itemsRes, projectsRes] = await Promise.all([
     sb.from("clarity_items").select("*").eq("user_id", userId).eq("is_deleted", false),
     sb.from("clarity_projects").select("*").eq("user_id", userId),

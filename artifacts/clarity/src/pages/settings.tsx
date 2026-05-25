@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
+import { getDeviceId } from "@/lib/supabase";
 import { useGitHubSync } from "@/lib/useGitHubSync";
 import { syncItems, syncProjects, verifyMigrationCounts } from "@/lib/supabase-sync";
 import { GitHubConfig } from "@/lib/github-sync";
@@ -98,7 +99,7 @@ function CrossDeviceSyncSection() {
       const res = await fetch('/api/clarity/link/redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: trimmed }),
+        body: JSON.stringify({ code: trimmed, deviceId: getDeviceId() }),
       });
       const data = await res.json() as {
         userId?: string;
