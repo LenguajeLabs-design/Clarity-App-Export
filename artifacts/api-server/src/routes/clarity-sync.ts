@@ -56,19 +56,45 @@ router.post("/clarity/auth", async (req, res) => {
     return;
   }
 
+  const email = `device.${deviceId}@clarity-internal.local`;
+
   try {
-    // Create a confirmed user with a synthetic email. We use email-based creation
-    // because anonymous admin creation requires Supabase v2.96+ and newer dashboard
-    // config. The client only ever stores the returned UUID — the email/password
-    // are never used again.
+    // Try to create a confirmed user with a synthetic email.
+    // If the user already exists (e.g. localStorage was cleared), look them up instead.
     const { data, error } = await sb.auth.admin.createUser({
-      email: `device.${deviceId}@clarity-internal.local`,
+      email,
       email_confirm: true,
       user_metadata: { clarity_device_id: deviceId },
     });
 
-    if (error) throw error;
-    res.json({ userId: data.user.id });
+    if (!error) {
+      res.json({ userId: data.user.id });
+      return;
+    }
+
+    // User already exists — look them up via the Admin REST API
+    const lookupUrl = `${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}&page=1&per_page=1`;
+    const lookupRes = await fetch(lookupUrl, {
+      headers: {
+        apikey: supabaseServiceKey!,
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+    });
+
+    if (!lookupRes.ok) {
+      console.error("[clarity-auth] lookup failed:", await lookupRes.text());
+      res.status(500).json({ error: "Auth failed — please try again." });
+      return;
+    }
+
+    const { users } = await lookupRes.json() as { users?: { id: string }[] };
+    if (users && users.length > 0) {
+      res.json({ userId: users[0].id });
+      return;
+    }
+
+    console.error("[clarity-auth] create error and no existing user:", error);
+    res.status(500).json({ error: "Auth failed — please try again." });
   } catch (e) {
     console.error("[clarity-auth] error:", e);
     res.status(500).json({ error: "Auth failed — please try again." });
@@ -315,20 +341,30 @@ router.get("/clarity/data/:userId", async (req, res) => {
   const items = (itemsResult.data ?? []).map((row: Record<string, unknown>) => ({
     id: row["id"],
     text: row["text"],
-    type: row["type"],
-    area: row["area"],
-    timing: row["timing"],
-    done: row["is_completed"] ?? false,
-    doneAt: row["updated_at"] && row["is_completed"] ? row["updated_at"] : null,
+    type: row["type"] ?? null,
+    area: row["area"] ?? null,
+    timing: row["timing"] ?? null,
+    isCompleted: row["is_completed"] ?? false,
+    completedAt: row["completed_at"] ?? null,
+    isTriaged: row["is_triaged"] ?? false,
+    isDeleted: row["is_deleted"] ?? false,
+    isPriority: row["is_priority"] ?? false,
+    isQuickWin: row["is_quick_win"] ?? false,
+    scheduledDate: row["scheduled_date"] ?? null,
     projectId: row["project_id"] ?? null,
+    nextAction: row["next_action"] ?? null,
+    waitingOn: row["waiting_on"] ?? null,
     createdAt: row["created_at"],
     updatedAt: row["updated_at"],
   }));
 
   const projects = (projectsResult.data ?? []).map((row: Record<string, unknown>) => ({
     id: row["id"],
-    name: row["title"],
+    title: row["title"],
     area: row["area"] ?? null,
+    dueDate: row["due_date"] ?? null,
+    nextAction: row["next_action"] ?? null,
+    status: row["status"] ?? "active",
     createdAt: row["created_at"],
     updatedAt: row["updated_at"],
   }));

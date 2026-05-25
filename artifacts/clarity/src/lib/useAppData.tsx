@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { useLocalStorage } from "./use-local-storage";
 import { CapturedItem, Project, UserSettings, AppData } from "./types";
 import { v4 as uuidv4 } from 'uuid';
@@ -8,6 +8,7 @@ import {
   syncItems,
   syncProject,
   syncProjects,
+  fetchFromSupabase,
 } from './supabase-sync';
 
 export const BLANK_ITEM = (text: string): CapturedItem => ({
@@ -50,6 +51,42 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   });
 
   const { userId, setSyncing, setSynced, setSyncError } = useSyncStatus();
+
+  // Pull from Supabase once when userId first becomes available (on app load
+  // and after cross-device linking). Remote items are merged in: items/projects
+  // in Supabase but missing locally are added; existing local entries are kept
+  // (the server already has the authoritative push from whichever device wrote
+  // them, so remote wins for items we don't have yet).
+  const hasPulled = useRef(false);
+  useEffect(() => {
+    if (!userId || hasPulled.current) return;
+    hasPulled.current = true;
+    void (async () => {
+      const remote = await fetchFromSupabase(userId);
+      if (!remote) return;
+      setItems((prev) => {
+        const byId = new Map(prev.map((i) => [i.id, i]));
+        for (const ri of remote.items) {
+          if (!byId.has(ri.id)) byId.set(ri.id, ri);
+          else {
+            // Remote wins if it marks an item deleted or completed
+            const li = byId.get(ri.id)!;
+            if ((ri.isDeleted && !li.isDeleted) || (ri.isCompleted && !li.isCompleted)) {
+              byId.set(ri.id, ri);
+            }
+          }
+        }
+        return Array.from(byId.values());
+      });
+      setProjects((prev) => {
+        const byId = new Map(prev.map((p) => [p.id, p]));
+        for (const rp of remote.projects) {
+          if (!byId.has(rp.id)) byId.set(rp.id, rp);
+        }
+        return Array.from(byId.values());
+      });
+    })();
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addItem = (text: string) => {
     const newItem = BLANK_ITEM(text);
