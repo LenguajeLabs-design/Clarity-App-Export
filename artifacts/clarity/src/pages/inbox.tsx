@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { Button } from "@/components/ui/button";
-import { InboxIcon, Sparkles } from "lucide-react";
+import { InboxIcon, Sparkles, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CapturedItem, ItemType, AreaOfLife, Timing, Project } from "@/lib/types";
 import { format, addDays } from "date-fns";
@@ -93,6 +93,7 @@ export default function Inbox() {
   const { items, projects, updateItem, addProject } = useAppData();
   const untriaged = items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted);
 
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
   const [triageStarted, setTriageStarted] = useState(false);
   const [index, setIndex] = useState(0);
   const [subStep, setSubStep] = useState<SubStep>('type');
@@ -102,6 +103,23 @@ export default function Inbox() {
   const [areaFilter, setAreaFilter] = useState<AreaFilter>(null);
 
   const item = untriaged[index];
+
+  const handleQuickComplete = (id: string) => {
+    if (completingIds.has(id)) return;
+    setCompletingIds((prev) => new Set(prev).add(id));
+    setTimeout(() => {
+      updateItem(id, {
+        isCompleted: true,
+        isTriaged: true,
+        completedAt: new Date().toISOString(),
+      });
+      setCompletingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, 380);
+  };
 
   const resetTriage = () => {
     setTriageStarted(false);
@@ -280,9 +298,13 @@ export default function Inbox() {
               ) : (
                 filteredUntriaged.map((i: CapturedItem) => {
                   const areaColor = i.area ? AREA_COLOR[i.area] : undefined;
+                  const completing = completingIds.has(i.id);
                   return (
-                    <div
+                    <motion.div
                       key={i.id}
+                      layout
+                      animate={completing ? { opacity: 0, x: 20 } : { opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3 }}
                       className="flex items-center gap-3 bg-card rounded-xl border border-border/60 px-4 py-3 min-h-[52px] overflow-hidden relative"
                     >
                       {areaColor && (
@@ -291,9 +313,19 @@ export default function Inbox() {
                           style={{ backgroundColor: areaColor }}
                         />
                       )}
-                      <div className="w-5 h-5 rounded-full border-2 border-border/60 flex-shrink-0 ml-1" />
+                      <button
+                        onPointerDown={(e) => { e.stopPropagation(); handleQuickComplete(i.id); }}
+                        className={`w-6 h-6 rounded-full border-2 flex-shrink-0 ml-1 flex items-center justify-center transition-all duration-300 active:scale-90 ${
+                          completing
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "border-border/60 hover:border-primary/60"
+                        }`}
+                        aria-label="Mark done"
+                      >
+                        {completing && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                      </button>
                       <span className="text-base text-foreground font-medium leading-snug line-clamp-2">{i.text}</span>
-                    </div>
+                    </motion.div>
                   );
                 })
               )}
