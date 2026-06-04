@@ -114,8 +114,8 @@ Mobile-first ADHD task manager app built with React + Vite. Primary storage is l
 - `GET /api/clarity/sync/count/:userId` — returns `{ items, projects }` counts for migration verification
 
 **Secrets needed:**
-- `VITE_SUPABASE_URL` — the project URL (https://xxx.supabase.co)
-- `VITE_SUPABASE_ANON_KEY` — the service_role JWT key (used server-side only; NOT exposed to browser)
+- `SUPABASE_URL` — the project URL (https://xxx.supabase.co) — server-side only, never exposed to the browser
+- `SUPABASE_SERVICE_KEY` — the service_role JWT key (used server-side only; NOT exposed to browser)
 
 **Import:** Settings page has a JSON importer that handles localStorage dump format (`clarity_items`, `clarity_projects` keys) and GitHub sync format (`{ items, projects, settings, syncedAt }`).
 

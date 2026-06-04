@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const router: IRouter = Router();
 
-const supabaseUrl = process.env["SUPABASE_URL"] ?? process.env["VITE_SUPABASE_URL"];
+const supabaseUrl = process.env["SUPABASE_URL"];
 const supabaseServiceKey = process.env["SUPABASE_SERVICE_KEY"];
 
 function getClient() {
