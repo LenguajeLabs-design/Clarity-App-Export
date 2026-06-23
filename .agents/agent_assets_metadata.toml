@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "nYs5s5l4jpD4IPC-FyNTD"
 uri = "file://artifacts/clarity-mobile/assets/images/icon.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "PqvhBNxHBpttDM1-Ry8Ib"
+uri = "file://clarity-app.zip"
+type = "unspecified"
+title = "clarity-app.zip"
