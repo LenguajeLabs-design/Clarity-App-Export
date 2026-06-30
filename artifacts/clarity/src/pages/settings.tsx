@@ -872,6 +872,14 @@ export default function Settings() {
             : "Everything stays on your device. Nothing is sent anywhere. This app doesn't track you."}
         </p>
       </div>
+
+      {/* Byline */}
+      <div className="text-center py-8 flex flex-col gap-1">
+        <p className="text-sm font-semibold text-foreground/40 tracking-wide font-display">Clarity</p>
+        <p className="text-xs text-muted-foreground/60 leading-relaxed max-w-[260px] mx-auto">
+          A calm task manager for ADHD minds — capture everything, sort what matters, act with focus.
+        </p>
+      </div>
     </div>
   );
 }
