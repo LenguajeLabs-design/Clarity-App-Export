@@ -47,6 +47,7 @@ export default function Inbox() {
   const [area, setArea] = useState<AreaOfLife | null>(null);
   const [nextAction, setNextAction] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
+  const [queueOpen, setQueueOpen] = useState(false);
 
   const available = untriaged.filter((i) => !skippedIds.has(i.id));
   const item = available[0];
@@ -130,10 +131,36 @@ export default function Inbox() {
 
   const targetLabel = target === "all" ? `${untriaged.length} left` : `${processed + 1} of ${target}`;
   const currentArea = area ?? item.area;
+  const queueItems = [item, ...untriaged.filter((entry) => entry.id !== item.id)];
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-5 no-scrollbar animate-in fade-in duration-200">
-      <div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Sorting</p><p className="text-sm font-semibold">{targetLabel}</p></div><button onClick={stopSprint} className="flex min-h-[44px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><Pause className="h-4 w-4" />Pause</button></div>
+      <div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Sorting</p><p className="text-sm font-semibold">{targetLabel}</p></div><button onClick={stopSprint} className="flex min-h-[44px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><Pause className="h-4 w-4" />Pause</button></div>
+      <div className="mb-5 overflow-hidden rounded-2xl border border-border/60 bg-muted/30">
+        <button
+          type="button"
+          aria-expanded={queueOpen}
+          aria-controls="triage-queue"
+          onClick={() => setQueueOpen((open) => !open)}
+          className="flex min-h-[48px] w-full items-center justify-between px-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted/60 hover:text-foreground focus:outline-none focus:ring-4 focus:ring-inset focus:ring-primary/10"
+        >
+          <span>{untriaged.length} {untriaged.length === 1 ? "task" : "tasks"} safely in your inbox</span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${queueOpen ? "rotate-180" : ""}`} />
+        </button>
+        {queueOpen && (
+          <div id="triage-queue" className="border-t border-border/60 px-3 py-2">
+            <div className="max-h-48 space-y-1 overflow-y-auto no-scrollbar">
+              {queueItems.map((entry, index) => (
+                <div key={entry.id} className={`flex items-start gap-3 rounded-xl px-3 py-2.5 text-sm ${index === 0 ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>
+                  <span className="mt-0.5 min-w-8 text-xs font-bold uppercase tracking-wide text-primary">{index === 0 ? "Now" : index + 1}</span>
+                  <span className="min-w-0 flex-1 break-words font-medium">{entry.text}</span>
+                </div>
+              ))}
+            </div>
+            <p className="px-3 pb-1 pt-2 text-xs text-muted-foreground">Nothing is lost. Sort only the task marked Now.</p>
+          </div>
+        )}
+      </div>
       <div className="mb-5 rounded-[1.75rem] border border-border/60 bg-card p-6 shadow-sm">
         <p className="break-words font-display text-2xl font-bold leading-snug">{item.text}</p>
         {currentArea && <div className="mt-4 flex items-center gap-2 text-xs font-semibold capitalize text-muted-foreground"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AREA_COLOR[currentArea] }} />{currentArea}</div>}
