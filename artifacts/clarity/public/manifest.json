@@ -6,29 +6,29 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#3b82f6",
-  "theme_color": "#3b82f6",
+  "background_color": "#F7F8FC",
+  "theme_color": "#181747",
   "icons": [
     {
-      "src": "clarity-apple-touch-v2.png",
+      "src": "clarity-ripple-v3-180.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "clarity-icon-v2-192.png",
+      "src": "clarity-ripple-v3-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "clarity-icon-v2-512.png",
+      "src": "clarity-ripple-v3-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "clarity-icon-v2-512.png",
+      "src": "clarity-ripple-v3-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
