@@ -1,292 +1,158 @@
-import { useState } from 'react';
-import { useAppData } from '@/lib/useAppData';
-import { Button } from '@/components/ui/button';
-import { useLocation } from 'wouter';
-import { InboxIcon, Calendar, Clock } from 'lucide-react';
-import { Project, CapturedItem } from '@/lib/types';
-import { motion, AnimatePresence } from 'framer-motion';
-import { format, parseISO, isToday, isTomorrow, isThisWeek } from 'date-fns';
+import { useEffect, useMemo, useState } from "react";
+import { Check, CheckCircle2, ChevronLeft, Clock3, FolderKanban, InboxIcon, Pause, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
+import { useLocation } from "wouter";
 
-function friendlyDate(dateStr: string | null): string {
-  if (!dateStr) return "";
-  const d = parseISO(dateStr);
-  if (isToday(d)) return "Today";
-  if (isTomorrow(d)) return "Tomorrow";
-  if (isThisWeek(d, { weekStartsOn: 1 })) return format(d, "EEEE");
-  return format(d, "MMM d");
+import { Button } from "@/components/ui/button";
+import { CapturedItem, Project } from "@/lib/types";
+import { useAppData } from "@/lib/useAppData";
+
+const REVIEW_KEY = "clarity_weekly_review_v2";
+const TOTAL_STEPS = 4;
+
+interface ReviewSession {
+  started: boolean;
+  active: boolean;
+  step: number;
+  waitingIndex: number;
+  projectIndex: number;
 }
 
-// ─── Weekly review checklist items ───────────────────────────────────────────
-const CHECKLIST_ITEMS = [
-  { id: 'inbox',    label: 'Cleared my inbox' },
-  { id: 'projects', label: 'Reviewed active projects' },
-  { id: 'waiting',  label: 'Checked what I\'m waiting on' },
-  { id: 'upcoming', label: 'Looked at the week ahead' },
-  { id: 'priorities', label: 'Set my top priorities' },
-  { id: 'capture',  label: 'Got everything out of my head' },
-];
+const EMPTY_SESSION: ReviewSession = { started: false, active: false, step: 0, waitingIndex: 0, projectIndex: 0 };
+
+function readSession(): ReviewSession {
+  try {
+    return { ...EMPTY_SESSION, ...JSON.parse(localStorage.getItem(REVIEW_KEY) ?? "{}") };
+  } catch {
+    return EMPTY_SESSION;
+  }
+}
+
+function ReviewHeader({ step, onPause }: { step: number; onPause: () => void }) {
+  return (
+    <div className="mb-6">
+      <div className="mb-4 flex items-center justify-between">
+        <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Weekly reset</p><p className="text-sm font-semibold">Step {step + 1} of {TOTAL_STEPS}</p></div>
+        <button onClick={onPause} className="flex min-h-[44px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><Pause className="h-4 w-4" /> Pause</button>
+      </div>
+      <div className="flex gap-2" aria-label={`Step ${step + 1} of ${TOTAL_STEPS}`}>
+        {Array.from({ length: TOTAL_STEPS }).map((_, index) => <div key={index} className={`h-1.5 flex-1 rounded-full ${index <= step ? "bg-primary" : "bg-border"}`} />)}
+      </div>
+    </div>
+  );
+}
+
+function StepActions({ back, next, nextLabel = "Keep going" }: { back?: () => void; next: () => void; nextLabel?: string }) {
+  return (
+    <div className="mt-auto flex gap-3 pt-6">
+      {back && <Button variant="ghost" onClick={back} className="h-14 w-14 rounded-2xl px-0" aria-label="Previous step"><ChevronLeft className="h-5 w-5" /></Button>}
+      <Button onClick={next} className="h-14 flex-1 rounded-2xl text-lg shadow-lg shadow-primary/15">{nextLabel}</Button>
+    </div>
+  );
+}
 
 export default function Review() {
   const { items, projects, updateItem, updateProject } = useAppData();
-  const [step, setStep] = useState(1);
-  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [, setLocation] = useLocation();
+  const restored = useMemo(readSession, []);
+  const [session, setSession] = useState(restored);
+  const [nextAction, setNextAction] = useState("");
 
-  const TOTAL_STEPS = 5;
+  const untriaged = items.filter((item: CapturedItem) => !item.isTriaged && !item.isDeleted);
+  const waitingItems = items.filter((item: CapturedItem) => item.isTriaged && !item.isDeleted && !item.isCompleted && !!item.waitingOn);
+  const activeProjects = projects.filter((project: Project) => project.status !== "done");
+  const weekItems = items.filter((item: CapturedItem) => item.isTriaged && !item.isDeleted && !item.isCompleted && item.timing === "this-week");
+  const priorityCount = weekItems.filter((item: CapturedItem) => item.isPriority).length;
+  const waitingItem = waitingItems[session.waitingIndex];
+  const project = activeProjects[session.projectIndex];
 
-  const untriaged = items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted).length;
-  const activeProjects = projects.filter((p: Project) => p.status !== 'done');
-  const waitingOnItems = items.filter(
-    (i: CapturedItem) => i.isTriaged && !i.isDeleted && !i.isCompleted && !!i.waitingOn
-  );
-  const upcomingItems = items.filter(
-    (i: CapturedItem) => i.isTriaged && !i.isDeleted && !i.isCompleted &&
-      (i.timing === 'this-week' || i.timing === 'later')
-  ).slice(0, 6);
-  const thisWeekItems = items.filter(
-    (i: CapturedItem) => i.isTriaged && !i.isDeleted && !i.isCompleted && i.timing === 'this-week'
-  );
-  const priorityCount = thisWeekItems.filter((i: CapturedItem) => i.isPriority).length;
+  useEffect(() => { if (session.started) localStorage.setItem(REVIEW_KEY, JSON.stringify(session)); }, [session]);
+  useEffect(() => { setNextAction(project?.nextAction ?? ""); }, [project?.id, project?.nextAction]);
 
-  const toggleChecklist = (id: string) => {
-    setCheckedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
+  const start = () => setSession((current) => ({ ...current, started: true, active: true }));
+  const pause = () => setSession((current) => ({ ...current, active: false }));
+  const moveTo = (step: number) => setSession((current) => ({ ...current, step }));
+  const advanceWaiting = () => setSession((current) => ({ ...current, waitingIndex: current.waitingIndex + 1 }));
+  const advanceProject = () => setSession((current) => ({ ...current, projectIndex: current.projectIndex + 1 }));
+  const finishReview = () => { localStorage.removeItem(REVIEW_KEY); setSession(EMPTY_SESSION); setLocation("/today"); };
 
-  const StepBar = () => (
-    <div className="flex gap-2 mb-8">
-      {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-        <div
-          key={i}
-          className={`h-2 flex-1 rounded-full transition-colors duration-500 ${
-            step > i ? 'bg-primary' : 'bg-border'
-          }`}
-        />
-      ))}
-    </div>
-  );
+  if (!session.active) {
+    return (
+      <div className="flex h-full flex-col p-6 animate-in fade-in duration-300">
+        <div className="mb-8 flex items-center gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Sparkles className="h-7 w-7" /></div>
+          <div><h1 className="font-display text-2xl font-bold">Weekly reset</h1><p className="text-sm text-muted-foreground">A calm check-in, not a test.</p></div>
+        </div>
+        <div className="flex-1 space-y-2 overflow-y-auto no-scrollbar">
+          <div className="flex items-center justify-between rounded-2xl bg-card px-4 py-4"><span className="text-sm font-medium text-muted-foreground">Inbox</span><span className="font-semibold">{untriaged.length} waiting</span></div>
+          <div className="flex items-center justify-between rounded-2xl bg-card px-4 py-4"><span className="text-sm font-medium text-muted-foreground">Waiting on</span><span className="font-semibold">{waitingItems.length}</span></div>
+          <div className="flex items-center justify-between rounded-2xl bg-card px-4 py-4"><span className="text-sm font-medium text-muted-foreground">Active projects</span><span className="font-semibold">{activeProjects.length}</span></div>
+          <div className="flex items-center justify-between rounded-2xl bg-card px-4 py-4"><span className="text-sm font-medium text-muted-foreground">Weekly priorities</span><span className="font-semibold">{priorityCount} of 3</span></div>
+        </div>
+        <div className="pt-8"><Button onClick={start} className="h-16 w-full rounded-2xl text-xl shadow-lg shadow-primary/20">{session.started ? "Resume review" : "Start 5-minute review"}</Button><p className="mt-3 text-center text-xs text-muted-foreground">You can pause anytime. Your place is saved.</p></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 h-full flex flex-col">
-      <AnimatePresence mode="wait">
+    <div className="flex h-full flex-col overflow-y-auto p-5 no-scrollbar">
+      <ReviewHeader step={session.step} onPause={pause} />
 
-        {/* ─── Step 1 — Inbox ─────────────────────────────────────────────── */}
-        {step === 1 && (
-          <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex-1 flex flex-col">
-            <StepBar />
-            <h1 className="text-4xl font-display font-bold mb-10 leading-tight">Let's check your inbox</h1>
-            <div className="flex-1 flex flex-col items-center justify-center text-center">
-              <div className="w-24 h-24 bg-primary/10 rounded-[2rem] flex items-center justify-center mb-8 shadow-inner">
-                <InboxIcon className="w-12 h-12 text-primary" />
-              </div>
-              <p className="text-3xl font-display font-bold mb-4">
-                {untriaged > 0 ? `You have ${untriaged} things to sort` : "Your inbox is clear!"}
-              </p>
-              <p className="text-xl text-muted-foreground">
-                {untriaged > 0 ? "Let's deal with those before moving on." : "A clear inbox means a clear mind."}
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 mt-auto pt-8">
-              {untriaged > 0 && (
-                <Button variant="outline" className="h-16 text-xl rounded-2xl w-full border-border/80" onClick={() => setLocation('/inbox')}>
-                  Go sort them
-                </Button>
-              )}
-              <Button className="h-16 text-xl rounded-2xl w-full shadow-lg shadow-primary/20" onClick={() => setStep(2)}>
-                Next →
-              </Button>
-            </div>
-          </motion.div>
-        )}
+      {session.step === 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><InboxIcon className="h-7 w-7" /></div>
+          <h1 className="font-display text-3xl font-bold leading-tight">Give loose thoughts a home</h1>
+          <p className="mt-3 text-lg text-muted-foreground">{untriaged.length ? `${untriaged.length} ${untriaged.length === 1 ? "task is" : "tasks are"} safely waiting.` : "Your inbox is already clear."}</p>
+          <div className="mt-8 rounded-[1.5rem] border border-border/60 bg-card p-5"><p className="font-semibold">{untriaged.length ? "Sort a few now, or keep going." : "Nothing needs your attention here."}</p><p className="mt-1 text-sm text-muted-foreground">A clear inbox is helpful, not required.</p>{untriaged.length > 0 && <Button variant="outline" onClick={() => setLocation("/inbox")} className="mt-5 h-12 w-full rounded-xl">Open Inbox</Button>}</div>
+          <StepActions next={() => moveTo(1)} />
+        </motion.div>
+      )}
 
-        {/* ─── Step 2 — Projects ─────────────────────────────────────────── */}
-        {step === 2 && (
-          <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex-1 flex flex-col h-full">
-            <StepBar />
-            <h1 className="text-4xl font-display font-bold mb-10 leading-tight">How are your projects going?</h1>
-            <div className="flex-1 overflow-y-auto no-scrollbar pb-4 flex flex-col gap-4">
-              {activeProjects.map((p: Project) => (
-                <div key={p.id} className="bg-card p-6 rounded-[2rem] shadow-sm border border-border/60">
-                  <h3 className="font-display font-bold text-2xl mb-1">{p.title}</h3>
-                  <p className="text-muted-foreground text-lg mb-1">Next: {p.nextAction}</p>
-                  {p.dueDate && (
-                    <p className="text-sm text-primary font-semibold mb-5">Due {friendlyDate(p.dueDate)}</p>
-                  )}
-                  {!p.dueDate && <div className="mb-5" />}
-                  <div className="flex gap-2 p-1 bg-muted/40 rounded-2xl">
-                    {(['not-started', 'in-progress', 'done'] as const).map((s, idx) => (
-                      <button
-                        key={s}
-                        className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${
-                          p.status === s
-                            ? 'bg-background shadow-sm text-foreground'
-                            : 'text-muted-foreground'
-                        }`}
-                        onClick={() => updateProject(p.id, { status: s })}
-                      >
-                        {['Not started', 'Active', 'Done'][idx]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {activeProjects.length === 0 && (
-                <p className="text-center text-muted-foreground text-lg py-10">No active projects.</p>
-              )}
-            </div>
-            <div className="pt-6 flex gap-3">
-              <Button variant="ghost" className="h-16 text-xl rounded-2xl flex-1" onClick={() => setStep(1)}>← Back</Button>
-              <Button className="h-16 text-xl rounded-2xl flex-1 shadow-lg shadow-primary/20" onClick={() => setStep(3)}>Next →</Button>
-            </div>
-          </motion.div>
-        )}
+      {session.step === 1 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Clock3 className="h-7 w-7" /></div>
+          <h1 className="font-display text-3xl font-bold leading-tight">Check what depends on others</h1><p className="mt-3 text-muted-foreground">One quick decision at a time.</p>
+          <div className="mt-8 flex-1">
+            {waitingItem ? (
+              <div className="rounded-[1.75rem] border border-border/60 bg-card p-6 shadow-sm"><p className="font-display text-2xl font-bold leading-snug">{waitingItem.text}</p><p className="mt-3 text-sm text-muted-foreground">Waiting on <span className="font-semibold text-foreground">{waitingItem.waitingOn}</span></p><div className="mt-6 grid grid-cols-2 gap-3"><Button variant="outline" onClick={advanceWaiting} className="h-14 rounded-xl">Still waiting</Button><Button onClick={() => updateItem(waitingItem.id, { waitingOn: null, isCompleted: true, completedAt: new Date().toISOString() })} className="h-14 rounded-xl"><Check className="mr-2 h-4 w-4" />Done</Button></div><button onClick={advanceWaiting} className="mt-3 min-h-[44px] w-full rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted">Not now</button></div>
+            ) : (
+              <div className="rounded-[1.75rem] bg-primary/5 p-6 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-primary" /><p className="mt-3 text-lg font-semibold">That is enough for now</p><p className="mt-1 text-sm text-muted-foreground">No more waiting items need a decision.</p></div>
+            )}
+          </div>
+          <StepActions back={() => moveTo(0)} next={() => moveTo(2)} />
+        </motion.div>
+      )}
 
-        {/* ─── Step 3 — Waiting on ──────────────────────────────────────── */}
-        {step === 3 && (
-          <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex-1 flex flex-col h-full">
-            <StepBar />
-            <h1 className="text-4xl font-display font-bold mb-4 leading-tight">What are you waiting on?</h1>
-            <p className="text-xl text-muted-foreground mb-8">Check in on anything that depends on someone else.</p>
-            <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
-              {waitingOnItems.length === 0 ? (
-                <div className="flex items-center gap-4 p-5 rounded-2xl bg-card border border-border/60">
-                  <Clock className="w-8 h-8 text-muted-foreground flex-shrink-0" />
-                  <p className="text-lg text-muted-foreground">Nothing in "waiting on" right now.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {waitingOnItems.map((i: CapturedItem) => (
-                    <div key={i.id} className="flex items-start gap-4 p-5 rounded-2xl bg-card border border-border/60 min-h-[72px]">
-                      <span className="text-2xl flex-shrink-0 mt-0.5">⏳</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-lg font-medium leading-snug">{i.text}</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Waiting on <span className="font-semibold text-foreground/70">{i.waitingOn}</span>
-                        </p>
-                        {i.nextAction && (
-                          <p className="text-xs text-muted-foreground/70 mt-0.5">Follow-up: {i.nextAction}</p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => updateItem(i.id, { waitingOn: null, isCompleted: true })}
-                        className="text-xs font-bold text-green-600 border border-green-300 rounded-xl px-3 py-2 hover:bg-green-50 transition-colors flex-shrink-0 min-h-[40px]"
-                      >
-                        Done ✓
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="pt-6 flex gap-3">
-              <Button variant="ghost" className="h-16 text-xl rounded-2xl flex-1" onClick={() => setStep(2)}>← Back</Button>
-              <Button className="h-16 text-xl rounded-2xl flex-1 shadow-lg shadow-primary/20" onClick={() => setStep(4)}>Next →</Button>
-            </div>
-          </motion.div>
-        )}
+      {session.step === 2 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><FolderKanban className="h-7 w-7" /></div>
+          <h1 className="font-display text-3xl font-bold leading-tight">Make the next step visible</h1><p className="mt-3 text-muted-foreground">A project only needs one clear next action.</p>
+          <div className="mt-8 flex-1">
+            {project ? (
+              <div className="rounded-[1.75rem] border border-border/60 bg-card p-6 shadow-sm"><p className="font-display text-2xl font-bold leading-snug">{project.title}</p><label htmlFor="review-next-action" className="mb-2 mt-5 block text-sm font-semibold text-muted-foreground">Next visible action</label><input id="review-next-action" value={nextAction} onChange={(event) => setNextAction(event.target.value)} placeholder="What can you physically do next?" className="h-14 w-full rounded-xl border border-border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/20" /><Button onClick={() => { updateProject(project.id, { nextAction: nextAction.trim(), status: "in-progress" }); advanceProject(); }} className="mt-4 h-14 w-full rounded-xl">Save and continue</Button><div className="mt-2 grid grid-cols-2 gap-2"><button onClick={advanceProject} className="min-h-[44px] rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted">Looks good</button><button onClick={() => updateProject(project.id, { status: "done" })} className="min-h-[44px] rounded-xl text-sm font-semibold text-muted-foreground hover:bg-muted">Project done</button></div></div>
+            ) : (
+              <div className="rounded-[1.75rem] bg-primary/5 p-6 text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-primary" /><p className="mt-3 text-lg font-semibold">Projects checked</p><p className="mt-1 text-sm text-muted-foreground">You have given enough attention here.</p></div>
+            )}
+          </div>
+          <StepActions back={() => moveTo(1)} next={() => moveTo(3)} />
+        </motion.div>
+      )}
 
-        {/* ─── Step 4 — What's coming up + pick priorities ─────────────── */}
-        {step === 4 && (
-          <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex-1 flex flex-col h-full">
-            <StepBar />
-            <h1 className="text-4xl font-display font-bold mb-2 leading-tight">Pick your top 3</h1>
-            <p className="text-xl text-muted-foreground mb-8">
-              {priorityCount >= 3
-                ? "You've picked 3 — great. You can change them."
-                : `Tap to mark ${3 - priorityCount} more thing${3 - priorityCount !== 1 ? 's' : ''} that matter most.`}
-            </p>
-            <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
-              {thisWeekItems.length === 0 && upcomingItems.length === 0 ? (
-                <div className="flex items-center gap-4 p-5 rounded-2xl bg-card border border-border/60">
-                  <Calendar className="w-8 h-8 text-muted-foreground flex-shrink-0" />
-                  <p className="text-lg text-muted-foreground">Nothing scheduled yet.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {(thisWeekItems.length > 0 ? thisWeekItems : upcomingItems).map((i: CapturedItem) => (
-                    <div
-                      key={i.id}
-                      onClick={() => {
-                        if (i.isPriority) updateItem(i.id, { isPriority: false });
-                        else if (priorityCount < 3) updateItem(i.id, { isPriority: true });
-                      }}
-                      className={`flex items-start gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all active:scale-[0.98] min-h-[72px] ${
-                        i.isPriority ? 'border-primary bg-primary/5 shadow-md' : 'border-border/60 bg-card hover:border-border'
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${i.isPriority ? 'border-primary bg-primary text-white' : 'border-border/80 bg-background'}`}>
-                        {i.isPriority && (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xl leading-snug">{i.text}</p>
-                        {i.nextAction && <p className="text-sm text-muted-foreground mt-1 truncate">Next: {i.nextAction}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="pt-6 flex gap-3">
-              <Button variant="ghost" className="h-16 text-xl rounded-2xl flex-1" onClick={() => setStep(3)}>← Back</Button>
-              <Button className="h-16 text-xl rounded-2xl flex-1 shadow-lg shadow-primary/20" onClick={() => setStep(5)}>Next →</Button>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ─── Step 5 — Weekly review checklist ───────────────────────── */}
-        {step === 5 && (
-          <motion.div key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex-1 flex flex-col h-full">
-            <StepBar />
-            <h1 className="text-4xl font-display font-bold mb-2 leading-tight">Weekly review</h1>
-            <p className="text-xl text-muted-foreground mb-8">
-              Check off what you covered. {checkedItems.size === CHECKLIST_ITEMS.length ? "You did it all 🎉" : "No pressure to get everything."}
-            </p>
-            <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-3 pb-4">
-              {CHECKLIST_ITEMS.map(({ id, label }) => {
-                const checked = checkedItems.has(id);
-                return (
-                  <motion.button
-                    key={id}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => toggleChecklist(id)}
-                    className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all min-h-[72px] text-left ${
-                      checked ? 'border-green-400/60 bg-green-50' : 'border-border/60 bg-card hover:border-border'
-                    }`}
-                  >
-                    <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${checked ? 'border-green-500 bg-green-500' : 'border-border/80'}`}>
-                      {checked && (
-                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <span className={`text-xl font-medium ${checked ? 'text-green-700 line-through decoration-green-400/60' : 'text-foreground'}`}>
-                      {label}
-                    </span>
-                  </motion.button>
-                );
-              })}
-            </div>
-            <div className="pt-6 flex gap-3">
-              <Button variant="ghost" className="h-16 text-xl rounded-2xl flex-1" onClick={() => setStep(4)}>← Back</Button>
-              <Button
-                className="h-16 text-xl rounded-2xl flex-1 shadow-lg shadow-primary/20"
-                onClick={() => { setStep(1); setCheckedItems(new Set()); setLocation('/today'); }}
-              >
-                Done 🎉
-              </Button>
-            </div>
-          </motion.div>
-        )}
-
-      </AnimatePresence>
+      {session.step === 3 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Sparkles className="h-7 w-7" /></div>
+          <h1 className="font-display text-3xl font-bold leading-tight">Choose what matters most</h1><p className="mt-3 text-muted-foreground">Pick up to three priorities. Fewer is completely fine.</p>
+          <div className="mt-6 flex-1 space-y-2 overflow-y-auto pb-2 no-scrollbar">
+            {weekItems.length ? weekItems.map((entry: CapturedItem) => {
+              const selected = entry.isPriority;
+              const disabled = !selected && priorityCount >= 3;
+              return <button key={entry.id} disabled={disabled} onClick={() => updateItem(entry.id, { isPriority: !selected })} className={`flex min-h-[64px] w-full items-center gap-3 rounded-2xl border px-4 text-left transition-all active:scale-[0.99] ${selected ? "border-primary bg-primary/5" : "border-border/60 bg-card"} ${disabled ? "opacity-45" : ""}`}><span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border-2 ${selected ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>{selected && <Check className="h-4 w-4" />}</span><span className="font-medium leading-snug">{entry.text}</span></button>;
+            }) : <div className="rounded-[1.75rem] bg-card p-6 text-center"><p className="font-semibold">Nothing is scheduled this week</p><p className="mt-1 text-sm text-muted-foreground">You can finish without inventing more work.</p></div>}
+          </div>
+          <div className="mt-4 rounded-2xl bg-muted/50 px-4 py-3 text-center text-sm font-semibold">{priorityCount} of 3 selected</div>
+          <StepActions back={() => moveTo(2)} next={finishReview} nextLabel="Finish review" />
+        </motion.div>
+      )}
     </div>
   );
 }
