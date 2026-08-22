@@ -4,7 +4,7 @@ import { useAppData } from "@/lib/useAppData";
 import { getApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Zap, Plus, Trash2, Loader2, X, CheckCircle2 } from "lucide-react";
-import appIcon from "/icon.png";
+import appIcon from "/clarity-mark-v2.png";
 import { motion, AnimatePresence } from "framer-motion";
 import { CapturedItem, ItemType, AreaOfLife, Timing } from "@/lib/types";
 import { AREA_COLOR, AREA_LABEL, TIMING_COLOR, TIMING_LABEL, TYPE_LABEL } from "@/lib/colors";

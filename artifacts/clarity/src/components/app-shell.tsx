@@ -5,7 +5,7 @@ import { useSyncStatus } from "@/lib/useSyncStatus";
 import { MigrationBanner } from "./migration-banner";
 import { Link, useLocation } from "wouter";
 import { PenLine, Cloud, CloudOff, Loader2, AlertCircle } from "lucide-react";
-import appIcon from "/icon.png";
+import appIcon from "/clarity-mark-v2.png";
 
 /**
  * Shows the status of the single canonical Supabase sync system.
