@@ -2,7 +2,6 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SyncStatusProvider } from "@/lib/useSyncStatus";
-import { GitHubSyncProvider } from "@/lib/useGitHubSync";
 import { AppDataProvider } from "@/lib/useAppData";
 import { ThemeSync } from "@/lib/useTheme";
 import { AppShell } from "@/components/app-shell";
@@ -43,9 +42,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       {/* SyncStatusProvider — Supabase sync state (passive, background writes) */}
       <SyncStatusProvider>
-        {/* GitHubSyncProvider — GitHub sync state (user-triggered) */}
-        <GitHubSyncProvider>
-          <AppDataProvider>
+        <AppDataProvider>
             <ThemeSync />
             <TooltipProvider>
               <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
@@ -53,8 +50,7 @@ function App() {
               </WouterRouter>
               <Toaster />
             </TooltipProvider>
-          </AppDataProvider>
-        </GitHubSyncProvider>
+        </AppDataProvider>
       </SyncStatusProvider>
     </QueryClientProvider>
   );

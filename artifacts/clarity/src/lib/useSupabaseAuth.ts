@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getApiUrl } from './api';
 import { getDeviceId } from './supabase';
 
 export interface SupabaseAuthState {
@@ -33,7 +34,7 @@ export function useSupabaseAuth(): SupabaseAuthState {
 
     async function bootstrap() {
       try {
-        const res = await fetch('/api/clarity/auth', {
+        const res = await fetch(getApiUrl('/api/clarity/auth'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ deviceId }),

@@ -8,6 +8,23 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+function buildAllowedOrigins() {
+  const configuredOrigins = (process.env["ALLOWED_ORIGINS"] ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return [
+    ...configuredOrigins,
+    "https://adhd-focus-hub.replit.app",
+    "http://localhost:26011",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    /\.replit\.dev$/,
+    /\.replit\.app$/,
+  ];
+}
+
 // Trust the first proxy hop so express-rate-limit can read X-Forwarded-For
 // correctly behind Replit's reverse proxy in production.
 app.set('trust proxy', 1);
@@ -40,12 +57,7 @@ app.use(
 );
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = [
-  "https://adhd-focus-hub.replit.app",
-  "http://localhost:26011",
-  /\.replit\.dev$/,
-  /\.replit\.app$/,
-];
+const ALLOWED_ORIGINS = buildAllowedOrigins();
 
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 

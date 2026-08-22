@@ -12,13 +12,12 @@ Follow these steps to enable optional cloud backup and cross-device sync.
 
 ---
 
-## Step 2 — Enable Anonymous Auth
+## Step 2 — Authentication
 
-1. In your Supabase project, open the left sidebar → **Authentication** → **Providers**.
-2. Find **Anonymous sign-ins** and toggle it **on**.
-3. Click **Save**.
-
-This lets Clarity sign in silently without asking you for an email or password.
+Clarity's trusted API creates a private device identity automatically. No
+browser key or anonymous-auth setting is required. Additional devices join the
+same private account once with a short-lived code from **Settings → Sync to
+another device**.
 
 ---
 
@@ -37,7 +36,8 @@ You should see "Success. No rows returned."
 
 1. In your Supabase project, open the left sidebar → **Settings** → **API**.
 2. Copy the **Project URL** (looks like `https://xxxx.supabase.co`).
-3. Copy the **anon / public** key (a long JWT string).
+3. Copy the **service_role** key. Treat it as a password: it belongs only in
+   Replit Secrets and must never be placed in frontend code or chat.
 
 ---
 
@@ -55,7 +55,7 @@ You should see "Success. No rows returned."
 
 ---
 
-## Step 6 — Migrate your data
+## Step 6 — Apply schema upgrades and migrate your data
 
 Once the app reloads:
 
@@ -63,12 +63,20 @@ Once the app reloads:
 - Tap it to copy your tasks, inbox items, and projects to Supabase.
 - Your original local data is **never deleted** — a backup is saved automatically.
 
-After migration, every new item you add or edit will sync to Supabase in the background.
+Re-run `supabase/schema.sql` when deploying this version. It is idempotent and
+adds durable link codes, indexes, completion timestamps, and stale-write
+protection to an existing Clarity database.
+
+After migration, every change is queued locally, retried after connectivity
+returns, and merged from Supabase on startup, focus, reconnect, and every 30
+seconds while the app is visible.
 
 ---
 
 ## Notes
 
-- Sync is **one-direction write** (local → cloud). Real-time multi-device sync is a future feature.
-- If you clear your browser data, your cloud data stays intact; you can re-migrate from another device after setting the same env vars.
+- Sync is bidirectional and offline-first. The newest timestamp wins; deleted
+  items remain as cloud tombstones so another device cannot resurrect them.
+- If you clear browser data, cloud data stays intact. Link that browser again
+  from an already-authorized device.
 - The `clarity_migrated` flag in localStorage prevents duplicate migrations.

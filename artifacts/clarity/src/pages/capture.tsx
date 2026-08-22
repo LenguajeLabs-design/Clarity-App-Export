@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAppData } from "@/lib/useAppData";
+import { getApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Zap, Plus, Trash2, Loader2, X, CheckCircle2 } from "lucide-react";
 import appIcon from "/icon.png";
@@ -116,7 +117,7 @@ export default function Capture() {
     setAiError("");
     setParsedTasks([]);
     try {
-      const response = await fetch("/api/parse-tasks", {
+      const response = await fetch(getApiUrl("/api/parse-tasks"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: rawText }),

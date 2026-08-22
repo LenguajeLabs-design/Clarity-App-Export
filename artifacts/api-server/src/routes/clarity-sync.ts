@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const router: IRouter = Router();
 
@@ -14,13 +14,20 @@ function getClient() {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T/;
+
+function safeTimestamp(value: unknown, fallback: string): string {
+  return typeof value === "string" && ISO_DATE_RE.test(value) && !Number.isNaN(Date.parse(value))
+    ? value
+    : fallback;
+}
 
 // ─── Shared helper: verify that deviceId owns userId ─────────────────────────
 // Returns true if the device is the primary owner OR an authorized linked device.
 // authorized_devices is a list added by /clarity/link/redeem when a second device
 // links to this account via a link code.
 async function verifyDeviceOwnsUser(
-  sb: ReturnType<typeof createClient>,
+  sb: SupabaseClient,
   userId: string,
   deviceId: string
 ): Promise<boolean> {
@@ -136,14 +143,25 @@ router.post("/clarity/sync", async (req, res) => {
   const errors: string[] = [];
 
   if (Array.isArray(items) && items.length > 0) {
-    const rows = items.map((item: unknown) => {
+    if (items.length > 500) {
+      res.status(413).json({ error: "Too many items in one sync request" });
+      return;
+    }
+    const now = new Date().toISOString();
+    const rows = items.filter((item: unknown) => {
+      const i = item as Record<string, unknown>;
+      return typeof i.id === "string" && UUID_RE.test(i.id) && typeof i.text === "string" && i.text.length <= 10_000;
+    }).map((item: unknown) => {
       const i = item as Record<string, unknown>;
       return {
         id: i.id,
         user_id: userId,
         text: i.text,
         created_at: i.createdAt ?? i.created_at,
-        updated_at: new Date().toISOString(),
+        updated_at: safeTimestamp(
+          i.updatedAt ?? i.updated_at,
+          safeTimestamp(i.createdAt ?? i.created_at, now),
+        ),
         type: i.type,
         area: i.area,
         timing: i.timing,
@@ -152,6 +170,7 @@ router.post("/clarity/sync", async (req, res) => {
         is_priority: i.isPriority ?? i.is_priority,
         is_quick_win: i.isQuickWin ?? i.is_quick_win,
         is_completed: i.isCompleted ?? i.is_completed,
+        completed_at: i.completedAt ?? i.completed_at,
         scheduled_date: i.scheduledDate ?? i.scheduled_date,
         project_id: i.projectId ?? i.project_id,
         next_action: i.nextAction ?? i.next_action,
@@ -169,7 +188,15 @@ router.post("/clarity/sync", async (req, res) => {
   }
 
   if (Array.isArray(projects) && projects.length > 0) {
-    const rows = projects.map((project: unknown) => {
+    if (projects.length > 500) {
+      res.status(413).json({ error: "Too many projects in one sync request" });
+      return;
+    }
+    const now = new Date().toISOString();
+    const rows = projects.filter((project: unknown) => {
+      const p = project as Record<string, unknown>;
+      return typeof p.id === "string" && UUID_RE.test(p.id) && typeof p.title === "string" && p.title.length <= 1_000;
+    }).map((project: unknown) => {
       const p = project as Record<string, unknown>;
       return {
         id: p.id,
@@ -180,7 +207,10 @@ router.post("/clarity/sync", async (req, res) => {
         next_action: p.nextAction ?? p.next_action,
         status: p.status,
         created_at: p.createdAt ?? p.created_at,
-        updated_at: new Date().toISOString(),
+        updated_at: safeTimestamp(
+          p.updatedAt ?? p.updated_at,
+          safeTimestamp(p.createdAt ?? p.created_at, now),
+        ),
       };
     });
 
@@ -201,20 +231,10 @@ router.post("/clarity/sync", async (req, res) => {
   res.json({ ok: true, syncedAt: new Date().toISOString() });
 });
 
-// ─── Cross-device link codes (in-memory, 10-min TTL) ─────────────────────────
+// ─── Cross-device link codes (durable in Supabase, 10-min TTL) ───────────────
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
 const LINK_TTL_MS = 10 * 60 * 1000;
-const linkCodes = new Map<string, { userId: string; expiresAt: number }>();
-
-// Sweep expired codes every minute
-setInterval(() => {
-  const now = Date.now();
-  for (const [code, val] of linkCodes.entries()) {
-    if (val.expiresAt < now) linkCodes.delete(code);
-  }
-}, 60_000);
-
 function makeCode(): string {
   let s = '';
   for (let i = 0; i < 6; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
@@ -222,19 +242,38 @@ function makeCode(): string {
 }
 
 // Generate a link code for this device's userId
-router.post("/clarity/link/generate", (req, res) => {
-  const { userId } = req.body as { userId?: string };
+router.post("/clarity/link/generate", async (req, res) => {
+  const { userId, deviceId } = req.body as { userId?: string; deviceId?: string };
   if (!userId || !UUID_RE.test(userId)) {
     res.status(400).json({ error: "Missing or invalid userId" });
     return;
   }
-  // Revoke any previous code from the same user
-  for (const [code, val] of linkCodes.entries()) {
-    if (val.userId === userId) linkCodes.delete(code);
+  if (!deviceId || !UUID_RE.test(deviceId)) {
+    res.status(400).json({ error: "Missing or invalid deviceId" });
+    return;
   }
+  const sb = getClient();
+  if (!sb) {
+    res.status(503).json({ error: "Sync not configured on server" });
+    return;
+  }
+  if (!await verifyDeviceOwnsUser(sb, userId, deviceId)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  await sb.from("clarity_link_codes").delete().eq("user_id", userId);
   const code = makeCode();
   const expiresAt = Date.now() + LINK_TTL_MS;
-  linkCodes.set(code, { userId, expiresAt });
+  const { error } = await sb.from("clarity_link_codes").insert({
+    code,
+    user_id: userId,
+    expires_at: new Date(expiresAt).toISOString(),
+  });
+  if (error) {
+    console.error("[clarity-link] create error:", error.message);
+    res.status(500).json({ error: "Could not create a link code" });
+    return;
+  }
   res.json({ code, expiresAt: new Date(expiresAt).toISOString() });
 });
 
@@ -252,19 +291,23 @@ router.post("/clarity/link/redeem", async (req, res) => {
     res.status(400).json({ error: "Missing or invalid deviceId" });
     return;
   }
-  const entry = linkCodes.get(normalized);
-  if (!entry || entry.expiresAt < Date.now()) {
-    res.status(404).json({ error: "Code not found or expired — generate a new one" });
-    return;
-  }
-
   const sb = getClient();
   if (!sb) {
     res.status(503).json({ error: "Sync not configured on server" });
     return;
   }
 
-  const { userId } = entry;
+  const { data: entry, error: codeError } = await sb
+    .from("clarity_link_codes")
+    .select("user_id, expires_at")
+    .eq("code", normalized)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (codeError || !entry) {
+    res.status(404).json({ error: "Code not found or expired — generate a new one" });
+    return;
+  }
+  const userId = entry.user_id as string;
 
   // Register deviceId as authorized on the account so future syncs pass
   const { data: userData } = await sb.auth.admin.getUserById(userId);
@@ -281,7 +324,7 @@ router.post("/clarity/link/redeem", async (req, res) => {
   ]);
 
   // Consume the code after a successful redemption
-  linkCodes.delete(normalized);
+  await sb.from("clarity_link_codes").delete().eq("code", normalized);
 
   res.json({
     userId,
@@ -323,8 +366,7 @@ router.get("/clarity/data/:userId", async (req, res) => {
     sb
       .from("clarity_items")
       .select("*")
-      .eq("user_id", userId)
-      .neq("is_deleted", true),
+      .eq("user_id", userId),
     sb
       .from("clarity_projects")
       .select("*")
@@ -375,6 +417,7 @@ router.get("/clarity/data/:userId", async (req, res) => {
 // ─── Count: verify migration ──────────────────────────────────────────────────
 router.get("/clarity/sync/count/:userId", async (req, res) => {
   const { userId } = req.params;
+  const deviceId = req.query["deviceId"] as string | undefined;
 
   if (!userId || !UUID_RE.test(userId)) {
     res.status(400).json({ error: "Invalid userId" });
@@ -384,6 +427,10 @@ router.get("/clarity/sync/count/:userId", async (req, res) => {
   const sb = getClient();
   if (!sb) {
     res.status(503).json({ error: "Supabase not configured on server" });
+    return;
+  }
+  if (!deviceId || !UUID_RE.test(deviceId) || !await verifyDeviceOwnsUser(sb, userId, deviceId)) {
+    res.status(401).json({ error: "Unauthorized" });
     return;
   }
 

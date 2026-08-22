@@ -2,27 +2,16 @@ import { useEffect } from "react";
 import { BottomNav } from "./bottom-nav";
 import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
-import { useGitHubSync } from "@/lib/useGitHubSync";
 import { MigrationBanner } from "./migration-banner";
-import { GitHubSyncButton, LocalOnlyBadge } from "./github-sync-button";
 import { Link, useLocation } from "wouter";
-import { PenLine, Cloud, Loader2, AlertCircle } from "lucide-react";
+import { PenLine, Cloud, CloudOff, Loader2, AlertCircle } from "lucide-react";
 import appIcon from "/icon.png";
 
 /**
- * Shows the right sync indicator based on what's configured:
- *  - GitHub configured  → tappable Sync button with live status
- *  - Only Supabase      → small Supabase status badge
- *  - Neither            → "Local only" label
+ * Shows the status of the single canonical Supabase sync system.
  */
 function SyncArea() {
-  const { config: githubConfig } = useGitHubSync();
   const { status: supabaseStatus, lastSyncedAt, isSupabaseConfigured } = useSyncStatus();
-
-  // GitHub takes priority — it has an interactive sync button
-  if (githubConfig) {
-    return <GitHubSyncButton />;
-  }
 
   // Supabase is configured — show its passive status
   if (isSupabaseConfigured) {
@@ -59,7 +48,12 @@ function SyncArea() {
   }
 
   // Nothing configured — show "Local only"
-  return <LocalOnlyBadge />;
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <CloudOff className="w-3 h-3" />
+      Offline
+    </span>
+  );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {

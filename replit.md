@@ -102,11 +102,10 @@ Mobile-first ADHD task manager app built with React + Vite. Primary storage is l
 - **Projects** (`/projects`) — cards with status segmented controls; inline next-action editing
 - **Upcoming** (`/upcoming`) — grouped by day using date-fns
 - **Review** (`/review`) — 5-step weekly review wizard
-- **Settings** (`/settings`) — Appearance (Light/Auto/Dark theme), 3 accessibility toggles, Import data (JSON file upload), GitHub sync, Supabase sync
+- **Settings** (`/settings`) — Appearance, accessibility, JSON import, automatic Supabase sync, and device linking
 
 **Sync architecture:**
 - **Supabase** (background, automatic) — all DB writes go through `POST /api/clarity/sync` on the API server. The server uses `VITE_SUPABASE_ANON_KEY` (service_role JWT) to write with service_role (bypasses RLS). The browser calls `POST /api/clarity/auth` once on startup to create a real Supabase auth user (satisfies FK constraint on `user_id`); the returned UUID is cached in `clarity_supabase_user_id` in localStorage. No browser-side Supabase client calls DB directly. Tables: `clarity_items`, `clarity_projects`.
-- **GitHub** (user-triggered) — stores `clarity-data.json` in a private repo; latest-write-wins; PAT with Contents read+write permission.
 
 **API server sync endpoints** (`artifacts/api-server/src/routes/clarity-sync.ts`):
 - `POST /api/clarity/auth` — creates Supabase user via admin API using service_role key; returns `{ userId }` (UUID cached client-side)
@@ -117,13 +116,13 @@ Mobile-first ADHD task manager app built with React + Vite. Primary storage is l
 - `SUPABASE_URL` — the project URL (https://xxx.supabase.co) — server-side only, never exposed to the browser
 - `SUPABASE_SERVICE_KEY` — the service_role JWT key (used server-side only; NOT exposed to browser)
 
-**Import:** Settings page has a JSON importer that handles localStorage dump format (`clarity_items`, `clarity_projects` keys) and GitHub sync format (`{ items, projects, settings, syncedAt }`).
+**Import:** Settings accepts localStorage dump format (`clarity_items`, `clarity_projects`) and standard Clarity exports (`{ items, projects, settings, syncedAt }`).
 
 **Theme:** `ThemeSync` component reads `settings.theme` ('light'|'dark'|'auto') and toggles `.dark` class on `<html>`.
 
 **Vite secrets:** `VITE_*` Replit secrets are injected at build time via the `define` block in `vite.config.ts` (reads `process.env.VITE_*`). Must restart Vite after changing secrets.
 
-**localStorage keys:** `clarity_items`, `clarity_projects`, `clarity_settings`, `clarity_github_config`, `clarity_github_backup`, `clarity_last_modified`, `clarity_migrated`, `clarity_supabase_auth`
+**localStorage keys:** `clarity_items`, `clarity_projects`, `clarity_settings`, `clarity_pending_sync_v1`, `clarity_last_modified`, `clarity_migrated`, `clarity_supabase_user_id`, `clarity_device_id`
 
 **Data model key fields on `CapturedItem`:** `waitingOn: string | null`, `nextAction: string | null`, `isPriority: boolean`
 

@@ -7,6 +7,8 @@ export interface CapturedItem {
   id: string;
   text: string;
   createdAt: string;
+  /** Last user-visible mutation; used for deterministic cross-device merging. */
+  updatedAt?: string;
   completedAt: string | null;
   type: ItemType | null;
   area: AreaOfLife | null;
@@ -41,6 +43,8 @@ export interface Project {
   nextAction: string;
   status: ProjectStatus;
   createdAt: string;
+  /** Last user-visible mutation; used for deterministic cross-device merging. */
+  updatedAt?: string;
 }
 
 export interface UserSettings {
@@ -68,7 +72,7 @@ export interface AppData {
   addProject: (p: Omit<Project, 'id' | 'createdAt'>) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   updateSettings: (s: UserSettings) => void;
-  /** Replace the entire local dataset at once (used after GitHub sync pull).
+  /** Replace the entire local dataset at once (used after import/device link).
    *  Pass syncedAt so clarity_last_modified reflects when the remote data was
    *  last modified, not the moment of replacement. */
   replaceAllData: (items: CapturedItem[], projects: Project[], settings: UserSettings, syncedAt?: string) => void;

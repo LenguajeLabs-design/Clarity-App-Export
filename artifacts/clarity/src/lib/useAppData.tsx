@@ -15,6 +15,7 @@ export const BLANK_ITEM = (text: string): CapturedItem => ({
   id: uuidv4(),
   text,
   createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
   completedAt: null,
   type: null,
   area: null,
@@ -34,7 +35,7 @@ const AppDataContext = createContext<AppData | null>(null);
 
 /**
  * Record the current time as the "last data modification" timestamp.
- * This is what GitHub sync uses for "latest write wins" comparisons.
+ * This timestamp supports migration diagnostics and deterministic cloud merges.
  * Must be called on every real data mutation (add / update / delete).
  */
 function touchModified() {
@@ -52,40 +53,53 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const { userId, setSyncing, setSynced, setSyncError } = useSyncStatus();
 
-  // Pull from Supabase once when userId first becomes available (on app load
-  // and after cross-device linking). Remote items are merged in: items/projects
-  // in Supabase but missing locally are added; existing local entries are kept
-  // (the server already has the authoritative push from whichever device wrote
-  // them, so remote wins for items we don't have yet).
-  const hasPulled = useRef(false);
+  const hasStartedSync = useRef(false);
   useEffect(() => {
-    if (!userId || hasPulled.current) return;
-    hasPulled.current = true;
-    void (async () => {
+    if (!userId || hasStartedSync.current) return;
+    hasStartedSync.current = true;
+
+    const mergeRemote = async () => {
+      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+      setSyncing();
       const remote = await fetchFromSupabase(userId);
-      if (!remote) return;
+      if (!remote) { setSyncError(); return; }
       setItems((prev) => {
         const byId = new Map(prev.map((i) => [i.id, i]));
         for (const ri of remote.items) {
-          if (!byId.has(ri.id)) byId.set(ri.id, ri);
-          else {
-            // Remote wins if it marks an item deleted or completed
-            const li = byId.get(ri.id)!;
-            if ((ri.isDeleted && !li.isDeleted) || (ri.isCompleted && !li.isCompleted)) {
-              byId.set(ri.id, ri);
-            }
-          }
+          const local = byId.get(ri.id);
+          const localTime = local?.updatedAt ?? local?.createdAt ?? '';
+          const remoteTime = ri.updatedAt ?? ri.createdAt;
+          if (!local || remoteTime >= localTime) byId.set(ri.id, ri);
         }
         return Array.from(byId.values());
       });
       setProjects((prev) => {
         const byId = new Map(prev.map((p) => [p.id, p]));
         for (const rp of remote.projects) {
-          if (!byId.has(rp.id)) byId.set(rp.id, rp);
+          const local = byId.get(rp.id);
+          const localTime = local?.updatedAt ?? local?.createdAt ?? '';
+          const remoteTime = rp.updatedAt ?? rp.createdAt;
+          if (!local || remoteTime >= localTime) byId.set(rp.id, rp);
         }
         return Array.from(byId.values());
       });
-    })();
+      setSynced();
+    };
+
+    // Local-first: queue the complete cache, then merge canonical cloud state.
+    void syncItems(items, userId, setSyncing, setSynced, setSyncError).then(mergeRemote);
+    void syncProjects(projects, userId, setSyncing, setSynced, setSyncError);
+    const interval = window.setInterval(() => void mergeRemote(), 30_000);
+    const onFocus = () => void mergeRemote();
+    window.addEventListener('online', onFocus);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('online', onFocus);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addItem = (text: string) => {
@@ -122,11 +136,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateItem = (id: string, updates: Partial<CapturedItem>) => {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
+    const updatedAt = new Date().toISOString();
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates, updatedAt } : i)));
     touchModified();
     const currentItem = items.find((i) => i.id === id);
     if (currentItem) {
-      void syncItem({ ...currentItem, ...updates }, userId, setSyncing, setSynced, setSyncError);
+      void syncItem({ ...currentItem, ...updates, updatedAt }, userId, setSyncing, setSynced, setSyncError);
     }
   };
 
@@ -139,23 +154,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addProject = (p: Omit<Project, 'id' | 'createdAt'>) => {
-    const newProject: Project = { ...p, id: uuidv4(), createdAt: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const newProject: Project = { ...p, id: uuidv4(), createdAt: now, updatedAt: now };
     setProjects((prev) => [newProject, ...prev]);
     touchModified();
     void syncProject(newProject, userId, setSyncing, setSynced, setSyncError);
   };
 
   const updateProject = (id: string, updates: Partial<Project>) => {
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+    const updatedAt = new Date().toISOString();
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt } : p)));
     touchModified();
     const currentProject = projects.find((p) => p.id === id);
     if (currentProject) {
-      void syncProject({ ...currentProject, ...updates }, userId, setSyncing, setSynced, setSyncError);
+      void syncProject({ ...currentProject, ...updates, updatedAt }, userId, setSyncing, setSynced, setSyncError);
     }
   };
 
-  // Replace the full dataset at once — used after GitHub sync detects a newer
-  // remote version. Updates both React state and localStorage atomically.
+  // Replace the full dataset at once after an import or device link.
+  // Updates both React state and localStorage atomically.
   // syncedAt is the remote's modification timestamp; we store it so future
   // syncs compare modification times correctly rather than treating this
   // device as "freshly edited".
