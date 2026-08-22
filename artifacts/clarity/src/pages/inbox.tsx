@@ -1,589 +1,173 @@
-import { useState } from "react";
-import { useAppData } from "@/lib/useAppData";
+import { useEffect, useMemo, useState } from "react";
+import { format } from "date-fns";
+import { CalendarDays, Check, CheckCircle2, ChevronDown, Clock3, Folder, InboxIcon, Pause, Sparkles, Trash2, UserRound } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { InboxIcon, Sparkles, Check } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { CapturedItem, ItemType, AreaOfLife, Timing, Project } from "@/lib/types";
-import { format, addDays } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 import { AREA_COLOR } from "@/lib/colors";
-import { AreaFilterBar, AreaFilter } from "@/components/area-filter-bar";
+import { AreaOfLife, CapturedItem, Project } from "@/lib/types";
+import { useAppData } from "@/lib/useAppData";
 
-// ─── Choice definitions (max 3 visible per step) ─────────────────────────────
+type SprintTarget = 3 | 5 | "all";
+type InlinePanel = "waiting" | "project" | "details" | null;
+interface SavedSession { active: boolean; target: SprintTarget; processed: number; skippedIds: string[] }
 
-// Step 1 — What kind of thing is this?
-const TYPE_CHOICES: { label: string; hint: string; value: ItemType }[] = [
-  { label: "A task",    hint: "One clear action I can take",    value: "task" },
-  { label: "A project", hint: "More than one step involved",    value: "project" },
-  { label: "An event or note", hint: "Something to remember or attend", value: "event" },
-];
+const SESSION_KEY = "clarity_triage_session_v2";
 
-// Step 1b — Multi-step check (only shown when "task" is picked, to catch sneaky projects)
-const MULTISTEP_CHOICES: { label: string; id: string }[] = [
-  { id: "no",      label: "Nope — one action does it" },
-  { id: "yes",     label: "Actually... it takes a few steps" },
-  { id: "notsure", label: "Not sure yet" },
-];
-
-// Step 2 — Area of life (Work / Family / Home or personal)
-const AREA_CHOICES: { label: string; value: AreaOfLife }[] = [
-  { label: "Work",             value: "work" },
-  { label: "Family",           value: "family" },
-  { label: "Home or personal", value: "home" },
-];
-
-const AREA_CHOICE_DOT = ({ value }: { value: AreaOfLife }) => (
-  <span
-    className="w-3 h-3 rounded-full flex-shrink-0 inline-block mr-2"
-    style={{ backgroundColor: AREA_COLOR[value] ?? "#7A8599" }}
-  />
-);
-
-// Step 3 — Timing
-const TIMING_CHOICES: { label: string; value: Timing }[] = [
-  { label: "Today",     value: "today" },
-  { label: "This week", value: "this-week" },
-  { label: "Later",     value: "later" },
-];
-
-// Step 5 — What to do with it (primary 3)
-const ACTION_PRIMARY: { id: string; label: string }[] = [
-  { id: "today",   label: "Do it today" },
-  { id: "schedule", label: "Schedule it" },
-  { id: "project", label: "Add to a project" },
-];
-
-// Step 5b — Less-common actions
-const ACTION_SECONDARY: { id: string; label: string }[] = [
-  { id: "later",  label: "Not yet — save for later" },
-  { id: "delete", label: "Toss it" },
-  { id: "back",   label: "← Back to main options" },
-];
-
-const SCHEDULE_CHOICES: { label: string; daysAhead: number }[] = [
-  { label: "Tomorrow",   daysAhead: 1 },
-  { label: "In 3 days",  daysAhead: 3 },
-  { label: "Next week",  daysAhead: 7 },
-];
-
-// ─── Draft type ───────────────────────────────────────────────────────────────
-interface TriageDraft {
-  type?: ItemType;
-  area?: AreaOfLife;
-  timing?: Timing;
-  nextAction?: string;
-  waitingOn?: string;
+function readSession(): SavedSession | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null") as SavedSession | null;
+    return value?.active ? value : null;
+  } catch { return null; }
 }
 
-type SubStep =
-  | 'type'
-  | 'multistep-check'
-  | 'suggest-project'
-  | 'area'
-  | 'next-action'
-  | 'timing'
-  | 'waiting-check'
-  | 'waiting-who'
-  | 'action-primary'
-  | 'action-secondary'
-  | 'schedule-when'
-  | 'project-which';
+function ActionButton({ icon: Icon, label, hint, onClick }: {
+  icon: typeof Clock3; label: string; hint: string; onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick} className="min-h-[68px] rounded-2xl border border-border/70 bg-card px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-primary/10">
+      <span className="flex items-center gap-2 font-semibold text-foreground"><Icon className="h-4 w-4 text-primary" />{label}</span>
+      <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>
+    </button>
+  );
+}
 
-// ─── Component ────────────────────────────────────────────────────────────────
 export default function Inbox() {
-  const { items, projects, updateItem, addProject } = useAppData();
-  const untriaged = items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted);
+  const { items, projects, updateItem } = useAppData();
+  const { toast } = useToast();
+  const untriaged = useMemo(() => items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted), [items]);
+  const restored = useMemo(() => readSession(), []);
+  const [active, setActive] = useState(restored?.active ?? false);
+  const [target, setTarget] = useState<SprintTarget>(restored?.target ?? 3);
+  const [processed, setProcessed] = useState(restored?.processed ?? 0);
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(() => new Set(restored?.skippedIds ?? []));
+  const [panel, setPanel] = useState<InlinePanel>(null);
+  const [waitingOn, setWaitingOn] = useState("");
+  const [selectedProject, setSelectedProject] = useState("");
+  const [area, setArea] = useState<AreaOfLife | null>(null);
+  const [nextAction, setNextAction] = useState("");
+  const [scheduledDate, setScheduledDate] = useState("");
 
-  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
-  const [triageStarted, setTriageStarted] = useState(false);
-  const [index, setIndex] = useState(0);
-  const [subStep, setSubStep] = useState<SubStep>('type');
-  const [draft, setDraft] = useState<TriageDraft>({});
-  const [nextActionText, setNextActionText] = useState('');
-  const [waitingText, setWaitingText] = useState('');
-  const [areaFilter, setAreaFilter] = useState<AreaFilter>(null);
+  const available = untriaged.filter((i) => !skippedIds.has(i.id));
+  const item = available[0];
+  const reachedTarget = target !== "all" && processed >= target;
+  const sessionComplete = active && (reachedTarget || !item);
 
-  const item = untriaged[index];
+  useEffect(() => {
+    if (!active) return;
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ active, target, processed, skippedIds: [...skippedIds] }));
+  }, [active, target, processed, skippedIds]);
 
-  const handleQuickComplete = (id: string) => {
-    if (completingIds.has(id)) return;
-    setCompletingIds((prev) => new Set(prev).add(id));
-    setTimeout(() => {
-      updateItem(id, {
-        isCompleted: true,
-        isTriaged: true,
-        completedAt: new Date().toISOString(),
-      });
-      setCompletingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }, 380);
+  const clearDraft = () => {
+    setPanel(null); setWaitingOn(""); setSelectedProject(""); setArea(null); setNextAction(""); setScheduledDate("");
   };
-
-  const resetTriage = () => {
-    setTriageStarted(false);
-    setIndex(0);
-    setSubStep('type');
-    setDraft({});
-    setNextActionText('');
-    setWaitingText('');
+  const startSprint = (nextTarget: SprintTarget) => {
+    setTarget(nextTarget); setProcessed(0); setSkippedIds(new Set()); setActive(true); clearDraft();
   };
-
-  const advance = (updates: Partial<TriageDraft>, next: SubStep) => {
-    setDraft((prev) => ({ ...prev, ...updates }));
-    setSubStep(next);
+  const stopSprint = () => {
+    setActive(false); setProcessed(0); setSkippedIds(new Set()); clearDraft(); localStorage.removeItem(SESSION_KEY);
   };
-
-  const finishTriage = (actionUpdates: Partial<CapturedItem>) => {
-    updateItem(item.id, {
-      type: draft.type ?? "task",
-      area: draft.area ?? "work",
-      timing: draft.timing ?? "later",
-      nextAction: draft.nextAction ?? null,
-      waitingOn: draft.waitingOn ?? null,
-      ...actionUpdates,
-      isTriaged: true,
-    });
-    setDraft({});
-    setNextActionText('');
-    setWaitingText('');
-    setSubStep('type');
-
-    if (index + 1 >= untriaged.length) {
-      resetTriage();
-    } else {
-      setIndex((i) => i + 1);
-    }
-  };
-
-  // ─── Action handlers ─────────────────────────────────────────────────────
-  const handleType = (value: ItemType) => {
-    if (value === 'task') {
-      advance({ type: 'task' }, 'multistep-check');
-    } else if (value === 'project') {
-      // Immediately go to area + then create a new project
-      advance({ type: 'project' }, 'area');
-    } else {
-      // event or note — skip next-action, go straight to timing
-      advance({ type: value }, 'area');
-    }
-  };
-
-  const handleMultistep = (id: string) => {
-    if (id === 'yes') {
-      setSubStep('suggest-project');
-    } else {
-      // no or not sure — continue as task
-      setSubStep('area');
-    }
-  };
-
-  const handleSuggestProject = (id: string) => {
-    if (id === 'yes') {
-      advance({ type: 'project' }, 'area');
-    } else {
-      // keep as task
-      setSubStep('area');
-    }
-  };
-
-  const handleArea = (value: AreaOfLife) => {
-    advance({ area: value }, draft.type === 'task' ? 'next-action' : 'timing');
-  };
-
-  const handleNextActionSubmit = () => {
-    advance({ nextAction: nextActionText.trim() || undefined }, 'timing');
-  };
-
-  const handleTiming = (value: Timing) => {
-    // After timing, ask about "waiting on" only for tasks
-    if (draft.type === 'task') {
-      advance({ timing: value }, 'waiting-check');
-    } else {
-      advance({ timing: value }, 'action-primary');
-    }
-  };
-
-  const handleWaitingCheck = (id: string) => {
-    if (id === 'yes') {
-      setSubStep('waiting-who');
-    } else {
-      setSubStep('action-primary');
-    }
-  };
-
-  const handleWaitingWho = () => {
-    advance({ waitingOn: waitingText.trim() || undefined }, 'action-primary');
-  };
-
-  const handleActionPrimary = (id: string) => {
-    if (id === 'today') {
-      finishTriage({ timing: 'today', scheduledDate: format(new Date(), 'yyyy-MM-dd') });
-    } else if (id === 'schedule') {
-      setSubStep('schedule-when');
-    } else if (id === 'project') {
-      setSubStep('project-which');
-    }
-  };
-
-  const handleActionSecondary = (id: string) => {
-    if (id === 'later') {
-      finishTriage({ timing: 'later' });
-    } else if (id === 'delete') {
-      finishTriage({ isDeleted: true });
-    } else if (id === 'back') {
-      setSubStep('action-primary');
-    }
-  };
-
-  const handleSchedule = (daysAhead: number) => {
-    const date = addDays(new Date(), daysAhead);
-    finishTriage({
-      timing: daysAhead <= 1 ? 'today' : 'this-week',
-      scheduledDate: format(date, 'yyyy-MM-dd'),
+  const finish = (updates: Partial<CapturedItem>, message: string) => {
+    if (!item) return;
+    const previous = { ...item };
+    updateItem(item.id, { type: item.type ?? "task", area: area ?? item.area, nextAction: nextAction.trim() || item.nextAction, ...updates, isTriaged: true });
+    setProcessed((n) => n + 1); clearDraft();
+    toast({
+      description: message,
+      action: (
+        <button
+          onClick={() => {
+            updateItem(previous.id, previous);
+            setProcessed((n) => Math.max(0, n - 1));
+          }}
+          className="text-sm font-semibold text-primary hover:underline"
+        >
+          Undo
+        </button>
+      ),
+      duration: 5000,
     });
   };
-
-  const handleProjectAssign = (project: Project) => {
-    finishTriage({ projectId: project.id, type: 'task', timing: 'this-week' });
+  const skip = () => {
+    if (!item) return;
+    setSkippedIds((current) => new Set(current).add(item.id)); clearDraft();
   };
 
-  const handleConvertToProject = () => {
-    // Turn this item into a project and triage the item as its first next action
-    addProject({
-      title: item.text,
-      area: draft.area ?? 'work',
-      nextAction: nextActionText.trim() || 'Define first step',
-      status: 'not-started',
-      dueDate: null,
-    });
-    finishTriage({ type: 'project', isDeleted: true }); // remove from items since it's now a project
-  };
-
-  // ─── Landing screen ───────────────────────────────────────────────────────
-  if (!triageStarted || !item) {
-    const filteredUntriaged = areaFilter
-      ? untriaged.filter((i: CapturedItem) => i.area === areaFilter)
-      : untriaged;
-
-    return (
-      <div className="flex flex-col h-full p-6 animate-in fade-in duration-500">
-        {untriaged.length > 0 ? (
-          <>
-            {/* Header */}
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center text-primary flex-shrink-0">
-                <InboxIcon className="w-7 h-7" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-display font-bold text-foreground">
-                  {untriaged.length} {untriaged.length === 1 ? "thing" : "things"} to sort
-                </h1>
-                <p className="text-muted-foreground text-sm">Take a breath. We'll do this one at a time.</p>
-              </div>
-            </div>
-
-            {/* Area filter */}
-            <div className="mb-4">
-              <AreaFilterBar value={areaFilter} onChange={setAreaFilter} />
-            </div>
-
-            {/* Preview list */}
-            <div className="flex-1 overflow-y-auto no-scrollbar flex flex-col gap-2 mb-6">
-              {filteredUntriaged.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 text-sm">
-                  No items in this area yet.
-                </p>
-              ) : (
-                filteredUntriaged.map((i: CapturedItem) => {
-                  const areaColor = i.area ? AREA_COLOR[i.area] : undefined;
-                  const completing = completingIds.has(i.id);
-                  return (
-                    <motion.div
-                      key={i.id}
-                      layout
-                      animate={completing ? { opacity: 0, x: 20 } : { opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="flex items-center gap-3 bg-card rounded-xl border border-border/60 px-4 py-3 min-h-[52px] overflow-hidden relative"
-                    >
-                      {areaColor && (
-                        <div
-                          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl"
-                          style={{ backgroundColor: areaColor }}
-                        />
-                      )}
-                      <button
-                        onPointerDown={(e) => { e.stopPropagation(); handleQuickComplete(i.id); }}
-                        className={`w-6 h-6 rounded-full border-2 flex-shrink-0 ml-1 flex items-center justify-center transition-all duration-300 active:scale-90 ${
-                          completing
-                            ? "bg-primary border-primary text-primary-foreground"
-                            : "border-border/60 hover:border-primary/60"
-                        }`}
-                        aria-label="Mark done"
-                      >
-                        {completing && <Check className="w-3.5 h-3.5" strokeWidth={3} />}
-                      </button>
-                      <span className="text-base text-foreground font-medium leading-snug line-clamp-2">{i.text}</span>
-                    </motion.div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* CTA */}
-            <Button
-              onClick={() => setTriageStarted(true)}
-              className="h-16 text-xl rounded-2xl shadow-lg shadow-primary/20 hover:-translate-y-1 transition-all w-full flex-shrink-0"
-            >
-              Let's go →
-            </Button>
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center flex-1 text-center">
-            <div className="w-24 h-24 bg-primary/10 rounded-[2rem] flex items-center justify-center text-primary mb-8 shadow-inner">
-              <Sparkles className="w-12 h-12" />
-            </div>
-            <h1 className="text-3xl font-display font-bold mb-3">You're all caught up.</h1>
-            <p className="text-muted-foreground text-lg">Nothing waiting in your inbox.</p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ─── Shared choice button ─────────────────────────────────────────────────
-  const ChoiceBtn = ({ onClick, children, hint }: { onClick: () => void; children: React.ReactNode; hint?: string }) => (
-    <Button
-      variant="outline"
-      onClick={onClick}
-      className="w-full min-h-[72px] h-auto text-xl font-medium justify-start px-6 py-4 rounded-2xl bg-card hover:bg-primary/5 hover:border-primary/50 transition-all shadow-sm active:scale-[0.98] flex flex-col items-start gap-0.5"
-    >
-      <span>{children}</span>
-      {hint && <span className="text-sm text-muted-foreground font-normal">{hint}</span>}
-    </Button>
+  if (untriaged.length === 0) return (
+    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+      <div className="mb-7 flex h-24 w-24 items-center justify-center rounded-[2rem] bg-primary/10 text-primary shadow-inner"><Sparkles className="h-12 w-12" /></div>
+      <h1 className="mb-3 font-display text-3xl font-bold">Inbox clear</h1>
+      <p className="max-w-xs text-lg text-muted-foreground">Everything has a place. Come back when something new arrives.</p>
+    </div>
   );
 
-  // Step counter for progress dots — map subStep to visual step number
-  const STEP_MAP: Record<SubStep, number> = {
-    'type': 1, 'multistep-check': 1, 'suggest-project': 1,
-    'area': 2,
-    'next-action': 3,
-    'timing': 4, 'waiting-check': 4, 'waiting-who': 4,
-    'action-primary': 5, 'action-secondary': 5, 'schedule-when': 5, 'project-which': 5,
-  };
-  const TOTAL_STEPS = 5;
-  const currentStep = STEP_MAP[subStep];
+  if (!active) return (
+    <div className="flex h-full flex-col p-6 animate-in fade-in duration-300">
+      <div className="mb-8 flex items-center gap-4">
+        <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"><InboxIcon className="h-7 w-7" /></div>
+        <div><h1 className="font-display text-2xl font-bold">{untriaged.length} to sort</h1><p className="text-sm text-muted-foreground">Choose a small finish line.</p></div>
+      </div>
+      <div className="mb-8 flex-1 space-y-2 overflow-y-auto no-scrollbar">
+        {untriaged.slice(0, 5).map((entry) => <div key={entry.id} className="rounded-xl border border-border/60 bg-card px-4 py-3 text-sm font-medium">{entry.text}</div>)}
+        {untriaged.length > 5 && <p className="px-2 pt-1 text-xs text-muted-foreground">+ {untriaged.length - 5} more safely waiting</p>}
+      </div>
+      <div className="space-y-3">
+        <Button onClick={() => startSprint(3)} className="h-16 w-full rounded-2xl text-xl shadow-lg shadow-primary/20">Sort 3</Button>
+        <div className="grid grid-cols-2 gap-3"><Button variant="outline" onClick={() => startSprint(5)} className="h-12 rounded-xl">Sort 5</Button><Button variant="ghost" onClick={() => startSprint("all")} className="h-12 rounded-xl">Clear everything</Button></div>
+      </div>
+    </div>
+  );
+
+  if (sessionComplete) return (
+    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+      <div className="mb-7 flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10 text-green-600"><CheckCircle2 className="h-10 w-10" /></div>
+      <h1 className="mb-2 font-display text-3xl font-bold">{processed} {processed === 1 ? "thing" : "things"} sorted</h1>
+      <p className="mb-8 max-w-xs text-muted-foreground">{untriaged.length > 0 ? `${untriaged.length} still waiting. Taking the win is allowed.` : "Your inbox is clear."}</p>
+      <div className="w-full max-w-sm space-y-3">{untriaged.length > 0 && <Button onClick={() => startSprint(3)} className="h-14 w-full rounded-2xl text-lg">Sort 3 more</Button>}<Button variant="outline" onClick={stopSprint} className="h-14 w-full rounded-2xl text-lg">{untriaged.length > 0 ? "Take the win" : "Done"}</Button></div>
+    </div>
+  );
+  if (!item) return null;
+
+  const targetLabel = target === "all" ? `${untriaged.length} left` : `${processed + 1} of ${target}`;
+  const currentArea = area ?? item.area;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-background flex flex-col p-6 max-w-[430px] mx-auto shadow-2xl overflow-y-auto">
-      {/* Progress dots + skip */}
-      <div className="flex justify-between items-center mb-8 mt-4 flex-shrink-0">
-        <div className="flex gap-2">
-          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-            <div
-              key={i}
-              className={`w-2.5 h-2.5 rounded-full transition-colors duration-500 ${
-                currentStep > i ? "bg-primary" : "bg-border"
-              }`}
-            />
-          ))}
-        </div>
-        <button
-          onClick={resetTriage}
-          className="text-muted-foreground font-semibold px-4 py-2 min-h-[48px] hover:text-foreground active:scale-95 transition-all"
-        >
-          Skip for now
-        </button>
+    <div className="flex h-full flex-col overflow-y-auto p-5 no-scrollbar animate-in fade-in duration-200">
+      <div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Sorting</p><p className="text-sm font-semibold">{targetLabel}</p></div><button onClick={stopSprint} className="flex min-h-[44px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><Pause className="h-4 w-4" />Pause</button></div>
+      <div className="mb-5 rounded-[1.75rem] border border-border/60 bg-card p-6 shadow-sm">
+        <p className="break-words font-display text-2xl font-bold leading-snug">{item.text}</p>
+        {currentArea && <div className="mt-4 flex items-center gap-2 text-xs font-semibold capitalize text-muted-foreground"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: AREA_COLOR[currentArea] }} />{currentArea}</div>}
       </div>
 
-      {/* Item text */}
-      <motion.h2
-        key={item.id}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-3xl font-display font-bold text-foreground mb-10 leading-tight flex-shrink-0"
-      >
-        "{item.text}"
-      </motion.h2>
+      {!panel && <>
+        <div className="grid grid-cols-2 gap-3">
+          <ActionButton icon={Clock3} label="Today" hint={format(new Date(), "EEE, MMM d")} onClick={() => finish({ timing: "today", scheduledDate: format(new Date(), "yyyy-MM-dd") }, "Moved to Today")} />
+          <ActionButton icon={CalendarDays} label="This week" hint="Before the week ends" onClick={() => finish({ timing: "this-week", scheduledDate: null }, "Moved to This week")} />
+          <ActionButton icon={ChevronDown} label="Later" hint="Keep it, no pressure" onClick={() => finish({ timing: "later", scheduledDate: null }, "Saved for later")} />
+          <ActionButton icon={UserRound} label="Waiting on…" hint="Someone else goes first" onClick={() => setPanel("waiting")} />
+          <ActionButton icon={Folder} label="Add to project" hint="Give it a home" onClick={() => setPanel("project")} />
+          <ActionButton icon={Check} label="Done" hint="Already handled" onClick={() => finish({ isCompleted: true, completedAt: new Date().toISOString() }, "Marked done")} />
+        </div>
+        <div className="mt-4 flex items-center justify-between"><button onClick={skip} className="min-h-[48px] rounded-xl px-3 text-sm font-semibold text-muted-foreground hover:bg-muted">Not now</button><button onClick={() => setPanel("details")} className="min-h-[48px] rounded-xl px-3 text-sm font-semibold text-primary hover:bg-primary/5">Add details</button><button onClick={() => finish({ isDeleted: true }, "Moved to trash")} aria-label="Delete task" className="flex h-12 w-12 items-center justify-center rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></button></div>
+      </>}
 
-      <AnimatePresence mode="wait">
-        {/* Step 1 — What kind of thing? */}
-        {subStep === 'type' && (
-          <motion.div key="type" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">What kind of thing is this?</p>
-            {TYPE_CHOICES.map(({ label, hint, value }) => (
-              <ChoiceBtn key={value} hint={hint} onClick={() => handleType(value)}>{label}</ChoiceBtn>
-            ))}
-          </motion.div>
-        )}
+      {panel === "waiting" && <div className="rounded-2xl border border-border/60 bg-card p-5">
+        <label htmlFor="waiting-on" className="mb-2 block text-lg font-semibold">Who are you waiting on?</label><input id="waiting-on" value={waitingOn} onChange={(e) => setWaitingOn(e.target.value)} placeholder="Name or role" autoFocus className="h-14 w-full rounded-xl border border-border bg-background px-4 text-lg outline-none focus:ring-2 focus:ring-primary/20" />
+        <div className="mt-4 flex gap-3"><Button variant="ghost" onClick={() => setPanel(null)} className="h-12 flex-1 rounded-xl">Back</Button><Button disabled={!waitingOn.trim()} onClick={() => finish({ waitingOn: waitingOn.trim(), timing: "this-week" }, `Waiting on ${waitingOn.trim()}`)} className="h-12 flex-1 rounded-xl">Save</Button></div>
+      </div>}
 
-        {/* Step 1b — Multi-step check */}
-        {subStep === 'multistep-check' && (
-          <motion.div key="multistep" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">Quick check — does this take more than one step?</p>
-            {MULTISTEP_CHOICES.map(({ id, label }) => (
-              <ChoiceBtn key={id} onClick={() => handleMultistep(id)}>{label}</ChoiceBtn>
-            ))}
-          </motion.div>
-        )}
+      {panel === "project" && <div className="rounded-2xl border border-border/60 bg-card p-5">
+        <p className="mb-3 text-lg font-semibold">Choose a project</p><div className="max-h-64 space-y-2 overflow-y-auto no-scrollbar">{projects.filter((p: Project) => p.status !== "done").map((p: Project) => <button key={p.id} onClick={() => setSelectedProject(p.id)} className={`min-h-[48px] w-full rounded-xl border px-4 text-left font-medium ${selectedProject === p.id ? "border-primary bg-primary/5" : "border-border/60"}`}>{p.title}</button>)}{projects.filter((p: Project) => p.status !== "done").length === 0 && <p className="py-4 text-sm text-muted-foreground">No active projects yet.</p>}</div>
+        <div className="mt-4 flex gap-3"><Button variant="ghost" onClick={() => setPanel(null)} className="h-12 flex-1 rounded-xl">Back</Button><Button disabled={!selectedProject} onClick={() => finish({ projectId: selectedProject, timing: "this-week" }, "Added to project")} className="h-12 flex-1 rounded-xl">Add</Button></div>
+      </div>}
 
-        {/* Step 1c — Suggest converting to project */}
-        {subStep === 'suggest-project' && (
-          <motion.div key="suggest" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">This sounds like a project — want to make it one?</p>
-            <ChoiceBtn onClick={() => handleSuggestProject('yes')}>Yes — turn it into a project</ChoiceBtn>
-            <ChoiceBtn onClick={() => handleSuggestProject('no')}>No — keep it as a task</ChoiceBtn>
-            <ChoiceBtn onClick={() => setSubStep('type')}>← Start over</ChoiceBtn>
-          </motion.div>
-        )}
-
-        {/* Step 2 — Area of life */}
-        {subStep === 'area' && (
-          <motion.div key="area" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">What area of life does this belong to?</p>
-            {AREA_CHOICES.map(({ label, value }) => (
-              <ChoiceBtn key={value} onClick={() => handleArea(value)}>
-                <AREA_CHOICE_DOT value={value} />
-                {label}
-              </ChoiceBtn>
-            ))}
-          </motion.div>
-        )}
-
-        {/* Step 3 — Next visible action (only for tasks & projects) */}
-        {subStep === 'next-action' && (
-          <motion.div key="next-action" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">
-              {draft.type === 'project'
-                ? "What's the very first step for this project?"
-                : "What's the next visible action to take?"}
-            </p>
-            <p className="text-sm text-muted-foreground -mt-1 mb-2">
-              Be specific — what would you actually do?
-            </p>
-            <textarea
-              value={nextActionText}
-              onChange={(e) => setNextActionText(e.target.value)}
-              placeholder={draft.type === 'project' ? "e.g. Open a blank doc and write an outline" : "e.g. Call the dentist at 9am"}
-              className="w-full text-xl bg-card border border-border/60 rounded-2xl p-5 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none font-medium"
-              rows={3}
-              autoFocus
-            />
-            <Button
-              size="lg"
-              onClick={handleNextActionSubmit}
-              className="h-16 text-xl rounded-2xl shadow-md shadow-primary/20"
-            >
-              {nextActionText.trim() ? 'Got it →' : 'Skip for now →'}
-            </Button>
-            {draft.type === 'project' && nextActionText.trim() && (
-              <button
-                onClick={handleConvertToProject}
-                className="min-h-[48px] py-3 text-base font-semibold text-primary hover:text-primary/80 transition-colors text-center active:scale-95"
-              >
-                Create as a full project in Projects →
-              </button>
-            )}
-          </motion.div>
-        )}
-
-        {/* Step 4 — When does this need to happen? */}
-        {subStep === 'timing' && (
-          <motion.div key="timing" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">When does this need to happen?</p>
-            {TIMING_CHOICES.map(({ label, value }) => (
-              <ChoiceBtn key={value} onClick={() => handleTiming(value)}>{label}</ChoiceBtn>
-            ))}
-          </motion.div>
-        )}
-
-        {/* Step 4b — Waiting on check (tasks only) */}
-        {subStep === 'waiting-check' && (
-          <motion.div key="waiting-check" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">Are you waiting on someone else to do something first?</p>
-            <ChoiceBtn onClick={() => setSubStep('waiting-who')}>Yes — I'm waiting on someone</ChoiceBtn>
-            <ChoiceBtn onClick={() => setSubStep('action-primary')}>No — it's all on me</ChoiceBtn>
-            <ChoiceBtn onClick={() => setSubStep('action-primary')}>Skip this</ChoiceBtn>
-          </motion.div>
-        )}
-
-        {/* Step 4c — Who are you waiting on? */}
-        {subStep === 'waiting-who' && (
-          <motion.div key="waiting-who" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">Who are you waiting on?</p>
-            <input
-              value={waitingText}
-              onChange={(e) => setWaitingText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleWaitingWho(); }}
-              placeholder="e.g. Principal Garcia, my manager…"
-              className="w-full h-[64px] text-xl bg-card border border-border/60 rounded-2xl px-5 focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
-              autoFocus
-            />
-            <Button size="lg" onClick={handleWaitingWho} className="h-16 text-xl rounded-2xl shadow-md shadow-primary/20">
-              {waitingText.trim() ? 'Got it →' : 'Skip →'}
-            </Button>
-          </motion.div>
-        )}
-
-        {/* Step 5 — What to do with it? (primary 3 actions) */}
-        {subStep === 'action-primary' && (
-          <motion.div key="action-primary" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">What do you want to do with it?</p>
-            {ACTION_PRIMARY.map(({ id, label }) => (
-              <ChoiceBtn key={id} onClick={() => handleActionPrimary(id)}>{label}</ChoiceBtn>
-            ))}
-            <button
-              onClick={() => setSubStep('action-secondary')}
-              className="min-h-[48px] py-3 text-base font-semibold text-muted-foreground hover:text-foreground transition-colors text-center active:scale-95"
-            >
-              Not yet or toss it →
-            </button>
-          </motion.div>
-        )}
-
-        {/* Step 5b — Secondary actions */}
-        {subStep === 'action-secondary' && (
-          <motion.div key="action-secondary" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">What do you want to do with it?</p>
-            {ACTION_SECONDARY.map(({ id, label }) => (
-              <ChoiceBtn key={id} onClick={() => handleActionSecondary(id)}>{label}</ChoiceBtn>
-            ))}
-          </motion.div>
-        )}
-
-        {/* Step 5c — Schedule when? */}
-        {subStep === 'schedule-when' && (
-          <motion.div key="schedule-when" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">When should this happen?</p>
-            {SCHEDULE_CHOICES.map(({ label, daysAhead }) => (
-              <ChoiceBtn key={label} onClick={() => handleSchedule(daysAhead)}>{label}</ChoiceBtn>
-            ))}
-            <button
-              onClick={() => setSubStep('action-primary')}
-              className="min-h-[48px] py-3 text-base font-semibold text-muted-foreground hover:text-foreground transition-colors text-center active:scale-95"
-            >
-              ← Back
-            </button>
-          </motion.div>
-        )}
-
-        {/* Step 5d — Which project? */}
-        {subStep === 'project-which' && (
-          <motion.div key="project-which" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex flex-col gap-4">
-            <p className="text-xl font-semibold text-muted-foreground mb-2">Which project?</p>
-            {projects.slice(0, 3).map((p: Project) => (
-              <ChoiceBtn key={p.id} onClick={() => handleProjectAssign(p)}>{p.title}</ChoiceBtn>
-            ))}
-            <button
-              onClick={() => setSubStep('action-primary')}
-              className="min-h-[48px] py-3 text-base font-semibold text-muted-foreground hover:text-foreground transition-colors text-center active:scale-95"
-            >
-              ← Back
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {panel === "details" && <div className="rounded-2xl border border-border/60 bg-card p-5">
+        <p className="mb-4 text-lg font-semibold">Optional details</p><label className="mb-2 block text-sm font-semibold text-muted-foreground">Area</label>
+        <div className="mb-4 grid grid-cols-2 gap-2">{(["work", "family", "home", "personal"] as AreaOfLife[]).map((v) => <button key={v} onClick={() => setArea(v)} className={`min-h-[44px] rounded-xl border px-3 text-sm font-semibold capitalize ${area === v ? "border-primary bg-primary/5" : "border-border/60"}`}>{v}</button>)}</div>
+        <label htmlFor="next-action" className="mb-2 block text-sm font-semibold text-muted-foreground">First visible action</label><input id="next-action" value={nextAction} onChange={(e) => setNextAction(e.target.value)} placeholder="Optional" className="mb-4 h-12 w-full rounded-xl border border-border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/20" />
+        <label htmlFor="scheduled-date" className="mb-2 block text-sm font-semibold text-muted-foreground">Exact date</label><input id="scheduled-date" type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} className="h-12 w-full rounded-xl border border-border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/20" />
+        <div className="mt-4 flex gap-3"><Button variant="ghost" onClick={() => setPanel(null)} className="h-12 flex-1 rounded-xl">Back</Button><Button onClick={() => finish({ timing: scheduledDate ? "this-week" : "later", scheduledDate: scheduledDate || null }, "Details saved")} className="h-12 flex-1 rounded-xl">Save details</Button></div>
+      </div>}
     </div>
   );
 }
