@@ -20,7 +20,7 @@ interface ParsedTask {
 }
 
 export default function Capture() {
-  const { addItem, addItemsBatch, addItemsBatchStructured, items, projects } = useAppData();
+  const { addItem, addItemsBatch, addItemsBatchStructured, items } = useAppData();
   const [text, setText] = useState("");
   const [brainDumpMode, setBrainDumpMode] = useState(false);
   const [brainDumpTab, setBrainDumpTab] = useState<BrainDumpTab>("lines");
@@ -40,9 +40,6 @@ export default function Capture() {
   const [, setLocation] = useLocation();
 
   const untriagedCount  = items.filter((i: CapturedItem) => !i.isTriaged && !i.isDeleted).length;
-  const todayCount      = items.filter((i: CapturedItem) => i.isTriaged && !i.isDeleted && !i.isCompleted && (i.timing === 'today' || i.isPriority)).length;
-  const projectsCount   = projects.filter((p) => p.status !== 'done').length;
-  const isFirstTime = items.length === 0;
 
   // — Single capture —
   const handleSave = () => {
@@ -170,12 +167,15 @@ export default function Capture() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="flex flex-col h-full p-6"
+      className="flex h-full flex-col p-5 sm:p-6"
     >
       {/* Logo */}
-      <div className="flex items-center mb-10 mt-4">
-        <img src={appIcon} alt="Clarity" className="w-10 h-10 rounded-[14px] mr-3 shadow-sm object-cover" />
-        <h1 className="text-xl font-display font-semibold tracking-tight text-foreground/80">Clarity</h1>
+      <div className="mt-2 flex items-center gap-3">
+        <img src={appIcon} alt="" className="h-12 w-12 rounded-2xl object-cover shadow-sm ring-1 ring-border/50" />
+        <div>
+          <h1 className="font-display text-xl font-bold tracking-tight">Clarity</h1>
+          <p className="text-xs font-medium text-muted-foreground">Clear the noise. Keep the next step.</p>
+        </div>
       </div>
 
       <AnimatePresence mode="wait">
@@ -186,38 +186,36 @@ export default function Capture() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="flex-1 flex flex-col justify-center max-w-sm w-full mx-auto pb-16"
+            className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center pb-12 pt-8"
           >
-            {isFirstTime && (
-              <motion.div
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-8 p-4 rounded-2xl bg-primary/5 border border-primary/10"
-              >
-                <p className="text-base text-foreground/70 leading-relaxed">
-                  <span className="font-semibold text-foreground">Welcome to Clarity.</span>{" "}
-                  Start by writing down whatever is taking up space in your head. One thing, or use brain dump mode to get it all out at once.
-                </p>
-              </motion.div>
-            )}
+            <div className="mb-7">
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-primary">Quick capture</p>
+              <h2 className="font-display text-3xl font-bold leading-tight sm:text-4xl">What needs a place?</h2>
+              <p className="mt-2 text-base text-muted-foreground">Get it out of your head. You can sort it later.</p>
+            </div>
 
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="What's on your mind?"
-              className="w-full text-3xl sm:text-4xl bg-transparent border-none outline-none resize-none placeholder:text-muted-foreground/40 text-foreground font-medium mb-10 overflow-hidden focus:ring-0"
-              rows={4}
-              autoFocus
-            />
+            <div className="mb-5 rounded-[1.75rem] border border-border/60 bg-card p-5 shadow-sm transition-shadow focus-within:border-primary/30 focus-within:shadow-md">
+              <label htmlFor="quick-capture" className="sr-only">What is on your mind?</label>
+              <textarea
+                id="quick-capture"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Write one thing…"
+                className="min-h-36 w-full resize-none overflow-hidden border-none bg-transparent text-2xl font-medium leading-snug text-foreground outline-none placeholder:text-muted-foreground/45 focus:ring-0 sm:text-3xl"
+                rows={4}
+                autoFocus
+              />
+              <p className="mt-2 text-xs text-muted-foreground">Press ⌘ Enter to capture</p>
+            </div>
 
             <Button
               size="lg"
               onClick={handleSave}
               disabled={!text.trim()}
-              className="h-16 text-xl rounded-2xl w-full shadow-lg shadow-primary/20 hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+              className="h-16 w-full rounded-2xl text-xl shadow-lg shadow-primary/20 transition-all active:scale-[0.99]"
             >
-              {saved ? "Saved ✓" : "Save it"}
+              {saved ? "Captured ✓" : "Capture this"}
             </Button>
 
             <button
@@ -225,45 +223,14 @@ export default function Capture() {
               className="mt-6 flex items-center justify-center gap-2 text-muted-foreground font-semibold hover:text-foreground transition-colors py-3 min-h-[48px] active:scale-95"
             >
               <Zap className="w-4 h-4" />
-              Brain dump — get it all out at once
+              Need more space? Start a brain dump
             </button>
 
-            {/* System overview cards — only shown when there's data */}
-            {!isFirstTime && (
-              <div className="mt-6 grid grid-cols-3 gap-3">
-                {/* Inbox */}
-                <button
-                  onClick={() => setLocation("/inbox")}
-                  className="flex flex-col items-center justify-center bg-card border border-border/60 rounded-2xl py-4 px-2 shadow-sm hover:shadow-md hover:border-border active:scale-95 transition-all min-h-[80px]"
-                >
-                  <span className={`text-2xl font-bold font-display tabular-nums ${untriagedCount > 0 ? "text-primary" : "text-muted-foreground/50"}`}>
-                    {untriagedCount}
-                  </span>
-                  <span className="text-xs text-muted-foreground font-medium mt-1">Inbox</span>
-                </button>
-
-                {/* Today */}
-                <button
-                  onClick={() => setLocation("/today")}
-                  className="flex flex-col items-center justify-center bg-card border border-border/60 rounded-2xl py-4 px-2 shadow-sm hover:shadow-md hover:border-border active:scale-95 transition-all min-h-[80px]"
-                >
-                  <span className={`text-2xl font-bold font-display tabular-nums ${todayCount > 0 ? "text-foreground" : "text-muted-foreground/50"}`}>
-                    {todayCount}
-                  </span>
-                  <span className="text-xs text-muted-foreground font-medium mt-1">Today</span>
-                </button>
-
-                {/* Projects */}
-                <button
-                  onClick={() => setLocation("/projects")}
-                  className="flex flex-col items-center justify-center bg-card border border-border/60 rounded-2xl py-4 px-2 shadow-sm hover:shadow-md hover:border-border active:scale-95 transition-all min-h-[80px]"
-                >
-                  <span className={`text-2xl font-bold font-display tabular-nums ${projectsCount > 0 ? "text-foreground" : "text-muted-foreground/50"}`}>
-                    {projectsCount}
-                  </span>
-                  <span className="text-xs text-muted-foreground font-medium mt-1">Projects</span>
-                </button>
-              </div>
+            {untriagedCount > 0 && (
+              <button onClick={() => setLocation("/inbox")} className="mt-3 flex min-h-[48px] items-center justify-between rounded-xl px-3 text-left text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground">
+                <span>{untriagedCount} {untriagedCount === 1 ? "task is" : "tasks are"} safely waiting</span>
+                <span className="text-primary">Sort a few →</span>
+              </button>
             )}
           </motion.div>
         )}
