@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { ItemRow } from "@/components/item-row";
 import { AreaFilterBar, AreaFilter } from "@/components/area-filter-bar";
-import { Sun, Star, Zap } from "lucide-react";
+import { Sun, Star, Trash2, Zap } from "lucide-react";
 import { CapturedItem } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
@@ -102,6 +102,22 @@ export default function Today() {
 
   const toggleQuickWin = (id: string, current: boolean) => {
     updateItem(id, { isQuickWin: !current });
+  };
+
+  const handleRemoveWaiting = (item: CapturedItem) => {
+    updateItem(item.id, { isDeleted: true });
+    toast({
+      description: "Task removed.",
+      action: (
+        <button
+          onClick={() => updateItem(item.id, { isDeleted: false })}
+          className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
+        >
+          Undo
+        </button>
+      ),
+      duration: 4000,
+    });
   };
 
   const allEmpty = todayItems.length === 0;
@@ -282,6 +298,14 @@ export default function Today() {
                       <p className="text-sm text-muted-foreground mt-0.5 truncate">Next: {i.nextAction}</p>
                     )}
                   </div>
+                  <button
+                    onClick={() => handleRemoveWaiting(i)}
+                    aria-label={`Remove task: ${i.text}`}
+                    title="Remove task"
+                    className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive focus:outline-none focus:ring-4 focus:ring-destructive/10"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
                 </div>
               ))}
             </div>
