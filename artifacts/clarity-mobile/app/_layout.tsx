@@ -15,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppDataProvider } from "@/context/AppDataContext";
+import { FirebaseAuthGate, FirebaseAuthProvider } from "@/lib/firebase-auth";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -51,9 +52,13 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView>
             <KeyboardProvider>
-              <AppDataProvider>
-                <RootLayoutNav />
-              </AppDataProvider>
+              <FirebaseAuthProvider>
+                <FirebaseAuthGate>
+                  <AppDataProvider>
+                    <RootLayoutNav />
+                  </AppDataProvider>
+                </FirebaseAuthGate>
+              </FirebaseAuthProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

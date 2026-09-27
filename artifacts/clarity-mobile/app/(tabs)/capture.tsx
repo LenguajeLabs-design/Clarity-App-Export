@@ -19,7 +19,7 @@ import { useColors } from "@/hooks/useColors";
 export default function CaptureScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { addItem, items } = useAppData();
+  const { addItem, items, syncStatus } = useAppData();
 
   const [text, setText] = useState("");
   const [brainDump, setBrainDump] = useState(false);
@@ -74,30 +74,26 @@ export default function CaptureScreen() {
         >
           Clarity
         </Text>
-        <TouchableOpacity
-          style={[
-            styles.modeToggle,
-            {
-              backgroundColor: brainDump ? colors.primary + "18" : colors.muted,
-              borderColor: brainDump ? colors.primary : colors.border,
-              borderRadius: 20,
-            },
-          ]}
-          onPress={() => setBrainDump((v) => !v)}
-          testID="brain-dump-toggle"
-        >
-          <Text
-            style={[
-              styles.modeText,
-              {
-                color: brainDump ? colors.primary : colors.mutedForeground,
-                fontFamily: "Inter_500Medium",
-              },
-            ]}
+        <View style={styles.headerActions}>
+          <View
+            style={[styles.syncButton, { backgroundColor: colors.muted, borderColor: colors.border, borderRadius: 20 }]}
+            accessibilityLabel="Automatic sync status"
           >
-            Brain Dump
-          </Text>
-        </TouchableOpacity>
+            <Ionicons
+              name={syncStatus === "synced" ? "cloud-done-outline" : syncStatus === "error" ? "cloud-offline-outline" : "cloud-outline"}
+              size={15}
+              color={syncStatus === "error" ? colors.destructive : colors.mutedForeground}
+            />
+            <Text style={[styles.modeText, { color: colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>Sync</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.modeToggle, { backgroundColor: brainDump ? colors.primary + "18" : colors.muted, borderColor: brainDump ? colors.primary : colors.border, borderRadius: 20 }]}
+            onPress={() => setBrainDump((v) => !v)}
+            testID="brain-dump-toggle"
+          >
+            <Text style={[styles.modeText, { color: brainDump ? colors.primary : colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>Brain Dump</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -213,6 +209,19 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     letterSpacing: -0.5,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  syncButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   modeToggle: {
     borderWidth: 1,

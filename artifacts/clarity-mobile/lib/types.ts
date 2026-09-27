@@ -13,6 +13,8 @@ export interface AppItem {
   projectId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Tombstones are kept briefly so deletes can sync across devices. */
+  isDeleted?: boolean;
 }
 
 export interface Project {
@@ -21,6 +23,11 @@ export interface Project {
   area: Area | null;
   createdAt: string;
   updatedAt: string;
+  dueDate?: string | null;
+  nextAction?: string;
+  status?: "not-started" | "in-progress" | "done";
+  /** Tombstones are kept briefly so deletes can sync across devices. */
+  isDeleted?: boolean;
 }
 
 export const AREA_LABEL: Record<Area, string> = {

@@ -42,8 +42,8 @@ export default function Projects() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ProjectDraft>(DEFAULT_DRAFT);
 
-  const activeProjects = projects.filter((p: Project) => p.status !== 'done');
-  const doneProjects   = projects.filter((p: Project) => p.status === 'done');
+  const activeProjects = projects.filter((p: Project) => !p.isDeleted && p.status !== 'done');
+  const doneProjects   = projects.filter((p: Project) => !p.isDeleted && p.status === 'done');
 
   const openNew  = () => { setDraft(DEFAULT_DRAFT); setEditingId('new'); };
   const openEdit = (p: Project) => {

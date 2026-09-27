@@ -6,6 +6,7 @@ import { AppDataProvider } from "@/lib/useAppData";
 import { ThemeSync } from "@/lib/useTheme";
 import { AppShell } from "@/components/app-shell";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { FirebaseAuthGate, FirebaseAuthProvider } from "@/lib/firebase-auth";
 
 import Capture from "@/pages/capture";
 import Inbox from "@/pages/inbox";
@@ -40,18 +41,21 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      {/* SyncStatusProvider — Supabase sync state (passive, background writes) */}
-      <SyncStatusProvider>
-        <AppDataProvider>
-            <ThemeSync />
-            <TooltipProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-                <Router />
-              </WouterRouter>
-              <Toaster />
-            </TooltipProvider>
-        </AppDataProvider>
-      </SyncStatusProvider>
+      <FirebaseAuthProvider>
+        <SyncStatusProvider>
+          <FirebaseAuthGate>
+            <AppDataProvider>
+                <ThemeSync />
+                <TooltipProvider>
+                  <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                    <Router />
+                  </WouterRouter>
+                  <Toaster />
+                </TooltipProvider>
+            </AppDataProvider>
+          </FirebaseAuthGate>
+        </SyncStatusProvider>
+      </FirebaseAuthProvider>
     </QueryClientProvider>
   );
 }

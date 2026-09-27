@@ -93,7 +93,7 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 
 ### `artifacts/clarity` (`@workspace/clarity`)
 
-Mobile-first ADHD task manager app built with React + Vite. Primary storage is localStorage; Supabase and GitHub provide optional cloud sync.
+Mobile-first ADHD task manager app built with React + Vite plus a native Expo client. Local storage provides the offline-first cache; Firebase Authentication and Cloud Firestore provide shared real-time sync.
 
 **Features:**
 - **Quick Capture** (`/`) — single-item textarea; "Brain dump mode" for rapid multi-item capture (numbered list, Enter to add lines, batch save to inbox)
@@ -102,19 +102,22 @@ Mobile-first ADHD task manager app built with React + Vite. Primary storage is l
 - **Projects** (`/projects`) — cards with status segmented controls; inline next-action editing
 - **Upcoming** (`/upcoming`) — grouped by day using date-fns
 - **Review** (`/review`) — 5-step weekly review wizard
-- **Settings** (`/settings`) — Appearance, accessibility, JSON import, automatic Supabase sync, and device linking
+- **Settings** (`/settings`) — Appearance, accessibility, JSON import, Google account status, and automatic Firebase sync
 
 **Sync architecture:**
-- **Supabase** (background, automatic) — all DB writes go through `POST /api/clarity/sync` on the API server. The server uses `VITE_SUPABASE_ANON_KEY` (service_role JWT) to write with service_role (bypasses RLS). The browser calls `POST /api/clarity/auth` once on startup to create a real Supabase auth user (satisfies FK constraint on `user_id`); the returned UUID is cached in `clarity_supabase_user_id` in localStorage. No browser-side Supabase client calls DB directly. Tables: `clarity_items`, `clarity_projects`.
+- **Firebase** (background, automatic) — both clients sign in with Google and use the Firebase UID as the shared identity. Records live under `users/{uid}/clarity/{recordId}`. Web and mobile clients subscribe with Firestore `onSnapshot`, write optimistically with `setDoc`, and keep local/offline caches. A record's `kind` field distinguishes items from projects; `isDeleted` tombstones preserve deletes across devices.
+- **Mobile client** — the Expo app uses the same Firebase project and canonical UUID-based record format. Both clients sign into the same Google account, so the Firebase UID identifies the shared cloud data. Older phone caches are migrated from timestamp IDs, and pending writes continue from the local cache when the app returns online/active.
 
-**API server sync endpoints** (`artifacts/api-server/src/routes/clarity-sync.ts`):
-- `POST /api/clarity/auth` — creates Supabase user via admin API using service_role key; returns `{ userId }` (UUID cached client-side)
-- `POST /api/clarity/sync` — accepts `{ userId, items?, projects? }`, upserts to Supabase
-- `GET /api/clarity/sync/count/:userId` — returns `{ items, projects }` counts for migration verification
+**Firebase setup:**
+- Enable Google under Firebase Authentication → Sign-in method.
+- Create the Firestore database and apply rules scoped to `request.auth.uid`.
+- Add the published web domain to Firebase Authentication → Authorized domains.
+- Register the web app and add the native iOS/Android OAuth client IDs for Expo builds.
 
 **Secrets needed:**
-- `SUPABASE_URL` — the project URL (https://xxx.supabase.co) — server-side only, never exposed to the browser
-- `SUPABASE_SERVICE_KEY` — the service_role JWT key (used server-side only; NOT exposed to browser)
+- `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID` — Firebase web configuration
+- `EXPO_PUBLIC_FIREBASE_API_KEY`, `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`, `EXPO_PUBLIC_FIREBASE_PROJECT_ID`, `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`, `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `EXPO_PUBLIC_FIREBASE_APP_ID` — same Firebase configuration for Expo
+- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` — OAuth client IDs used by Expo Google sign-in; client IDs are not secrets
 
 **Import:** Settings accepts localStorage dump format (`clarity_items`, `clarity_projects`) and standard Clarity exports (`{ items, projects, settings, syncedAt }`).
 
@@ -122,11 +125,11 @@ Mobile-first ADHD task manager app built with React + Vite. Primary storage is l
 
 **Vite secrets:** `VITE_*` Replit secrets are injected at build time via the `define` block in `vite.config.ts` (reads `process.env.VITE_*`). Must restart Vite after changing secrets.
 
-**localStorage keys:** `clarity_items`, `clarity_projects`, `clarity_settings`, `clarity_pending_sync_v1`, `clarity_last_modified`, `clarity_migrated`, `clarity_supabase_user_id`, `clarity_device_id`
+**localStorage / AsyncStorage keys:** `clarity_items`, `clarity_projects`, `clarity_settings`, `clarity_last_modified`
 
 **Data model key fields on `CapturedItem`:** `waitingOn: string | null`, `nextAction: string | null`, `isPriority: boolean`
 
-**Tech:** React 18, Vite, Tailwind CSS, framer-motion, date-fns, uuid, shadcn/ui, wouter, @supabase/supabase-js v2.100+
+**Tech:** React 18, Vite, Tailwind CSS, framer-motion, date-fns, uuid, shadcn/ui, wouter, Firebase JS SDK, Expo AuthSession
 
 ### `scripts` (`@workspace/scripts`)
 

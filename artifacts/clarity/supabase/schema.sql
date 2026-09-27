@@ -51,10 +51,13 @@ create table if not exists clarity_projects (
   due_date     date,
   next_action  text        not null default '',
   status       text        not null check (status in ('not-started', 'in-progress', 'done')) default 'not-started',
+  is_deleted   boolean     not null default false,
 
   created_at   timestamptz not null,
   updated_at   timestamptz not null default now()
 );
+
+alter table clarity_projects add column if not exists is_deleted boolean not null default false;
 
 alter table clarity_projects enable row level security;
 

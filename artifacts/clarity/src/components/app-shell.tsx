@@ -2,20 +2,19 @@ import { useEffect } from "react";
 import { BottomNav } from "./bottom-nav";
 import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
-import { MigrationBanner } from "./migration-banner";
 import { Link, useLocation } from "wouter";
 import { PenLine, Cloud, CloudOff, Loader2, AlertCircle } from "lucide-react";
 import appIcon from "/clarity-ripple-v3.svg";
 
 /**
- * Shows the status of the single canonical Supabase sync system.
+ * Shows the status of the Firebase sync system.
  */
 function SyncArea() {
-  const { status: supabaseStatus, lastSyncedAt, isSupabaseConfigured } = useSyncStatus();
+  const { status: syncStatus, lastSyncedAt, isFirebaseConfigured } = useSyncStatus();
 
-  // Supabase is configured — show its passive status
-  if (isSupabaseConfigured) {
-    if (supabaseStatus === 'syncing') {
+  // Firebase is configured — show its passive status
+  if (isFirebaseConfigured) {
+    if (syncStatus === 'syncing') {
       return (
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Loader2 className="w-3 h-3 animate-spin" />
@@ -23,7 +22,7 @@ function SyncArea() {
         </span>
       );
     }
-    if (supabaseStatus === 'synced') {
+    if (syncStatus === 'synced') {
       const timeStr = lastSyncedAt
         ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : null;
@@ -37,7 +36,7 @@ function SyncArea() {
         </span>
       );
     }
-    if (supabaseStatus === 'error') {
+    if (syncStatus === 'error') {
       return (
         <span className="flex items-center gap-1 text-xs text-destructive">
           <AlertCircle className="w-3 h-3" />
@@ -95,8 +94,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
         )}
-
-        <MigrationBanner />
 
         <main className="flex-1 overflow-y-auto pb-[100px] no-scrollbar">
           {children}

@@ -1,331 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
-import { getApiUrl } from "@/lib/api";
-import { getDeviceId } from "@/lib/supabase";
-import { syncItems, syncProjects, verifyMigrationCounts } from "@/lib/supabase-sync";
+import { useFirebaseAuth } from "@/lib/firebase-auth";
 import { Switch } from "@/components/ui/switch";
 import {
   Cloud,
-  CloudOff,
-  Loader2,
   CheckCircle2,
   AlertCircle,
-  RefreshCw,
   Sun,
   Moon,
   Monitor,
   Upload,
-  Smartphone,
-  Link2,
-  Copy,
-  Check,
+  LogOut,
 } from "lucide-react";
-
-// ─── Cross-device sync section ────────────────────────────────────────────────
-
-const SUPABASE_USER_ID_KEY = 'clarity_supabase_user_id';
-
-function CrossDeviceSyncSection() {
-  const { userId, isSupabaseConfigured } = useSyncStatus();
-  const { replaceAllData, settings } = useAppData();
-
-  // Generate-code side
-  const [genState, setGenState] = useState<'idle' | 'loading' | 'showing'>('idle');
-  const [code, setCode] = useState('');
-  const [codeExpiry, setCodeExpiry] = useState<Date | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(0);
-  const [copied, setCopied] = useState(false);
-
-  // Redeem-code side
-  const [linkInput, setLinkInput] = useState('');
-  const [linkState, setLinkState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [linkError, setLinkError] = useState('');
-
-  useEffect(() => {
-    if (!codeExpiry) return;
-    const tick = () => {
-      const s = Math.max(0, Math.round((codeExpiry.getTime() - Date.now()) / 1000));
-      setSecondsLeft(s);
-      if (s === 0) { setGenState('idle'); setCode(''); setCodeExpiry(null); }
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [codeExpiry]);
-
-  if (!isSupabaseConfigured) return null;
-
-  async function handleGenerate() {
-    if (!userId) return;
-    setGenState('loading');
-    try {
-      const res = await fetch(getApiUrl('/api/clarity/link/generate'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, deviceId: getDeviceId() }),
-      });
-      const data = await res.json() as { code?: string; expiresAt?: string; error?: string };
-      if (!res.ok) throw new Error(data.error);
-      setCode(data.code!);
-      setCodeExpiry(new Date(data.expiresAt!));
-      setGenState('showing');
-    } catch {
-      setGenState('idle');
-    }
-  }
-
-  function handleCopy() {
-    void navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function handleRedeem() {
-    const trimmed = linkInput.trim().toUpperCase();
-    if (!trimmed) return;
-    setLinkState('loading');
-    setLinkError('');
-    try {
-      const res = await fetch(getApiUrl('/api/clarity/link/redeem'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: trimmed, deviceId: getDeviceId() }),
-      });
-      const data = await res.json() as {
-        userId?: string;
-        items?: Record<string, unknown>[];
-        projects?: Record<string, unknown>[];
-        error?: string;
-      };
-      if (!res.ok) throw new Error(data.error ?? 'Invalid or expired code');
-
-      const mappedItems = (data.items ?? []).map(i => ({
-        id: i['id'] as string,
-        text: i['text'] as string,
-        type: i['type'] as string | null,
-        area: i['area'] as string | null,
-        timing: i['timing'] as string | null,
-        isTriaged: Boolean(i['is_triaged']),
-        isDeleted: Boolean(i['is_deleted']),
-        isPriority: Boolean(i['is_priority']),
-        isQuickWin: Boolean(i['is_quick_win']),
-        isCompleted: Boolean(i['is_completed']),
-        scheduledDate: (i['scheduled_date'] as string | null) ?? null,
-        projectId: (i['project_id'] as string | null) ?? null,
-        nextAction: (i['next_action'] as string | null) ?? null,
-        waitingOn: (i['waiting_on'] as string | null) ?? null,
-        createdAt: i['created_at'] as string,
-        updatedAt: (i['updated_at'] as string | undefined) ?? i['created_at'] as string,
-        completedAt: (i['completed_at'] as string | null) ?? null,
-      }));
-
-      const mappedProjects = (data.projects ?? []).map(p => ({
-        id: p['id'] as string,
-        title: p['title'] as string,
-        area: (p['area'] as string | null) ?? null,
-        dueDate: (p['due_date'] as string | null) ?? null,
-        nextAction: (p['next_action'] as string | null) ?? null,
-        status: (p['status'] as string) ?? 'active',
-        createdAt: p['created_at'] as string,
-        updatedAt: (p['updated_at'] as string | undefined) ?? p['created_at'] as string,
-      }));
-
-      localStorage.setItem(SUPABASE_USER_ID_KEY, data.userId!);
-      replaceAllData(mappedItems as never, mappedProjects as never, settings);
-      setLinkState('success');
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (e) {
-      setLinkError(e instanceof Error ? e.message : 'Something went wrong');
-      setLinkState('error');
-    }
-  }
-
-  const mins = Math.ceil(secondsLeft / 60);
-
-  return (
-    <div className="bg-card p-5 rounded-2xl border border-primary/20 shadow-sm">
-      <div className="flex items-center gap-2 mb-1">
-        <Smartphone className="w-4 h-4 text-primary" />
-        <h3 className="text-base font-semibold text-foreground">Sync to another device</h3>
-      </div>
-      <p className="text-sm text-muted-foreground mb-5">
-        Link your phone and PC so they always share the same tasks.
-      </p>
-
-      {/* ── Step 1: generate a code on this device ── */}
-      <div className="mb-5 pb-5 border-b border-border/50">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Step 1 — On this device, get a code
-        </p>
-        {genState === 'idle' && (
-          <button
-            onClick={() => void handleGenerate()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 active:opacity-80 transition-opacity"
-          >
-            <Link2 className="w-4 h-4" />
-            Get a link code
-          </button>
-        )}
-        {genState === 'loading' && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" /> Generating…
-          </div>
-        )}
-        {genState === 'showing' && (
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="font-mono text-4xl font-bold tracking-[0.3em] text-foreground select-all">
-                {code}
-              </span>
-              <button
-                onClick={handleCopy}
-                className="p-2 rounded-lg border border-border hover:bg-muted transition-colors"
-                title="Copy code"
-              >
-                {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Expires in {secondsLeft < 60 ? `${secondsLeft}s` : `${mins}m`} · One-time use
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* ── Step 2: enter the code on the other device ── */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-          Step 2 — On your other device, enter the code
-        </p>
-        {linkState === 'success' ? (
-          <div className="flex items-center gap-2 text-sm text-green-700 font-medium">
-            <CheckCircle2 className="w-4 h-4" />
-            Linked! Reloading your data…
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <input
-              value={linkInput}
-              onChange={e => setLinkInput(e.target.value.toUpperCase())}
-              onKeyDown={e => { if (e.key === 'Enter') void handleRedeem(); }}
-              maxLength={6}
-              placeholder="ABC123"
-              className="flex-1 font-mono uppercase tracking-widest text-center text-lg px-3 py-2.5 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <button
-              onClick={() => void handleRedeem()}
-              disabled={linkState === 'loading' || linkInput.trim().length < 6}
-              className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 active:opacity-80 disabled:opacity-50 transition-opacity"
-            >
-              {linkState === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Link'}
-            </button>
-          </div>
-        )}
-        {linkState === 'error' && (
-          <p className="text-sm text-destructive mt-2 flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            {linkError}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Supabase section (kept for existing users) ───────────────────────────────
-
-type MigrationState = 'idle' | 'running' | 'success' | 'error';
-
-function SupabaseSyncSection() {
-  const { items, projects } = useAppData();
-  const { status, lastSyncedAt, userId, isSupabaseConfigured, setSynced, setSyncError } = useSyncStatus();
-  const [migrationState, setMigrationState] = useState<MigrationState>('idle');
-  const [errorMessage, setErrorMessage] = useState('');
-  const isMigrated = Boolean(localStorage.getItem('clarity_migrated'));
-
-  async function runMigration() {
-    if (!userId) {
-      setErrorMessage('Not connected to Supabase. Please wait a moment and try again.');
-      setMigrationState('error');
-      return;
-    }
-    setMigrationState('running');
-    setErrorMessage('');
-    try {
-      localStorage.setItem('clarity_items_backup', JSON.stringify(items));
-      localStorage.setItem('clarity_projects_backup', JSON.stringify(projects));
-      await syncItems(items, userId, () => {}, () => {}, () => { throw new Error('Items sync failed'); });
-      await syncProjects(projects, userId, () => {}, () => {}, () => { throw new Error('Projects sync failed'); });
-      const ok = await verifyMigrationCounts(userId, items.length, projects.length);
-      if (!ok) throw new Error('Count mismatch — please try again.');
-      localStorage.setItem('clarity_migrated', 'true');
-      localStorage.removeItem('clarity_migration_dismissed');
-      setSynced();
-      setMigrationState('success');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Unknown error';
-      setErrorMessage(msg);
-      setSyncError();
-      setMigrationState('error');
-    }
-  }
-
-  if (!isSupabaseConfigured) return null;
-
-  const timeStr = lastSyncedAt
-    ? lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : null;
-
-  return (
-    <div className="bg-card p-5 rounded-2xl border border-border/60 shadow-sm mb-4">
-      <div className="flex items-center gap-2 mb-4">
-        <Cloud className="w-4 h-4 text-primary" />
-        <h3 className="text-base font-semibold text-foreground">Supabase sync</h3>
-      </div>
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-muted-foreground">Status</span>
-        <span className="flex items-center gap-1.5 text-sm font-medium">
-          {status === 'local-only' && <><CloudOff className="w-3.5 h-3.5 text-muted-foreground" /><span className="text-muted-foreground">Local only</span></>}
-          {status === 'syncing' && <><Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /><span className="text-primary">Syncing…</span></>}
-          {status === 'synced' && <><CheckCircle2 className="w-3.5 h-3.5 text-green-600" /><span className="text-green-700">Synced{timeStr ? ` at ${timeStr}` : ''}</span></>}
-          {status === 'error' && <><AlertCircle className="w-3.5 h-3.5 text-destructive" /><span className="text-destructive">Sync error</span></>}
-        </span>
-      </div>
-      {!isMigrated && migrationState !== 'success' && (
-        <div className="border-t border-border/50 pt-4">
-          <p className="text-sm text-muted-foreground mb-3">Your existing data hasn't been uploaded yet.</p>
-          {migrationState === 'error' && (
-            <div className="flex items-start gap-2 mb-3 p-2.5 rounded-xl bg-destructive/10">
-              <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-destructive">{errorMessage}</p>
-            </div>
-          )}
-          <button
-            onClick={() => void runMigration()}
-            disabled={migrationState === 'running'}
-            className="flex items-center gap-1.5 text-sm font-semibold text-white bg-primary rounded-xl px-4 py-2.5 min-h-[44px] w-full justify-center hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-60"
-          >
-            {migrationState === 'running' ? <><Loader2 className="w-4 h-4 animate-spin" /> Migrating…</> : 'Migrate my data'}
-          </button>
-        </div>
-      )}
-      {(isMigrated || migrationState === 'success') && (
-        <div className="border-t border-border/50 pt-4">
-          {migrationState === 'success' && (
-            <div className="flex items-center gap-2 mb-3 text-sm text-green-700">
-              <CheckCircle2 className="w-4 h-4" /> Migration complete! All data backed up.
-            </div>
-          )}
-          <button onClick={() => void runMigration()} disabled={migrationState === 'running'}
-            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors disabled:opacity-40">
-            {migrationState === 'running' ? 'Migrating…' : 'Re-run migration'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Import data section ──────────────────────────────────────────────────────
 
@@ -452,11 +139,39 @@ function ImportDataSection() {
   );
 }
 
+function FirebaseAccountSection() {
+  const { user, signOutUser } = useFirebaseAuth();
+  return (
+    <div className="bg-card p-5 rounded-2xl border border-primary/20 shadow-sm mb-4">
+      <div className="flex items-center gap-2 mb-1">
+        <Cloud className="w-4 h-4 text-primary" />
+        <h3 className="text-base font-semibold text-foreground">Google account sync</h3>
+      </div>
+      <p className="text-sm text-muted-foreground mb-4">
+        Your Clarity data syncs automatically across devices through your Firebase account.
+      </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground truncate">{user?.displayName ?? "Google account"}</p>
+          <p className="text-xs text-muted-foreground truncate">{user?.email ?? "Signed in"}</p>
+        </div>
+        <button
+          onClick={() => void signOutUser()}
+          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted"
+        >
+          <LogOut className="w-3.5 h-3.5" /> Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Settings page ───────────────────────────────────────────────────────
 
 export default function Settings() {
   const { settings, updateSettings } = useAppData();
-  const { isSupabaseConfigured } = useSyncStatus();
+  const { status } = useSyncStatus();
+  const { user } = useFirebaseAuth();
 
   return (
     <div className="p-6 animate-in fade-in duration-500">
@@ -515,8 +230,7 @@ export default function Settings() {
 
       {/* Sync sections */}
       <div className="mb-8 flex flex-col gap-4">
-        <CrossDeviceSyncSection />
-        <SupabaseSyncSection />
+        <FirebaseAccountSection />
       </div>
 
       <div className="h-px bg-border/60 w-full mb-8" />
@@ -525,9 +239,9 @@ export default function Settings() {
       <div className="bg-muted/50 p-6 rounded-2xl border border-border/50 mb-4">
         <h3 className="text-lg font-semibold text-foreground mb-2">Your data</h3>
         <p className="text-base text-muted-foreground leading-relaxed">
-          {isSupabaseConfigured
-            ? "Supabase is the canonical store. This device keeps an offline cache and synchronizes automatically when connected."
-            : "Cloud sync is unavailable. Changes remain safely queued on this device until the service reconnects."}
+          {status === "synced"
+            ? "Firebase is syncing your data automatically across signed-in devices."
+            : "Your data is stored locally while Firebase finishes connecting."}
         </p>
       </div>
 
@@ -535,9 +249,9 @@ export default function Settings() {
       <div className="bg-primary/5 p-8 rounded-[2rem] border border-primary/10">
         <h3 className="text-2xl font-display font-bold text-primary mb-3">Privacy Promise</h3>
         <p className="text-lg text-foreground/80 leading-relaxed font-medium">
-          {isSupabaseConfigured
-            ? "Your data only goes to your own Supabase project — fully under your control. Nothing is shared with third parties. This app doesn't track you."
-            : "Everything stays on your device. Nothing is sent anywhere. This app doesn't track you."}
+          {user
+            ? "Your data is scoped to your Google account in Firestore. Nothing is shared with other users. This app doesn't track you."
+            : "Everything stays on your device until you sign in. This app doesn't track you."}
         </p>
       </div>
 

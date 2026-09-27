@@ -1,38 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { Platform } from "react-native";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { AppItem, Project } from "@/lib/types";
+import { useFirebaseAuth } from "@/lib/firebase-auth";
+import { saveClarityRecord, saveClarityRecords, subscribeToClarity } from "@/lib/firestore-sync";
+import { generateUUID } from "@/lib/ids";
 
 const ITEMS_KEY = "clarity_items";
 const PROJECTS_KEY = "clarity_projects";
-const DEVICE_ID_KEY = "clarity_device_id";
-const USER_ID_KEY = "clarity_user_id";
-
-function makeId(): string {
-  return Date.now().toString() + Math.random().toString(36).substr(2, 9);
-}
-
-function generateUUID(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-function getApiBase(): string {
-  if (Platform.OS === "web") return "/api";
-  const domain = process.env["EXPO_PUBLIC_DOMAIN"];
-  if (domain) return `https://${domain}/api`;
-  return "/api";
-}
 
 type SyncStatus = "idle" | "syncing" | "synced" | "error" | "offline";
 
@@ -52,448 +26,234 @@ interface AppDataContextValue {
 
 const AppDataContext = createContext<AppDataContextValue | null>(null);
 
+function recordTime(record: { createdAt: string; updatedAt: string }): number {
+  const time = Date.parse(record.updatedAt || record.createdAt);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function mergeRecords<T extends { id: string; createdAt: string; updatedAt: string; isDeleted?: boolean }>(
+  local: T[],
+  remote: T[],
+): T[] {
+  const byId = new Map(local.map((record) => [record.id, record]));
+  for (const candidate of remote) {
+    const current = byId.get(candidate.id);
+    if (!current || recordTime(candidate) >= recordTime(current)) byId.set(candidate.id, candidate);
+  }
+  return [...byId.values()];
+}
+
+function visibleRecords<T extends { isDeleted?: boolean }>(records: T[]): T[] {
+  return records.filter((record) => !record.isDeleted);
+}
+
+function recordsToUpload<T extends { id: string; createdAt: string; updatedAt: string }>(local: T[], remote: T[]): T[] {
+  const remoteById = new Map(remote.map((record) => [record.id, record]));
+  return local.filter((record) => {
+    const remoteRecord = remoteById.get(record.id);
+    return !remoteRecord || recordTime(record) >= recordTime(remoteRecord);
+  });
+}
+
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useFirebaseAuth();
   const [items, setItems] = useState<AppItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
-  const userIdRef = useRef<string | null>(null);
+  const itemsRef = useRef<AppItem[]>([]);
+  const projectsRef = useRef<Project[]>([]);
 
   useEffect(() => {
-    async function init() {
+    let cancelled = false;
+    async function loadLocal() {
       try {
         const [rawItems, rawProjects] = await Promise.all([
           AsyncStorage.getItem(ITEMS_KEY),
           AsyncStorage.getItem(PROJECTS_KEY),
         ]);
-        if (rawItems) setItems(JSON.parse(rawItems));
-        if (rawProjects) setProjects(JSON.parse(rawProjects));
+        const localItems = rawItems ? JSON.parse(rawItems) as AppItem[] : [];
+        const localProjects = rawProjects ? JSON.parse(rawProjects) as Project[] : [];
+        if (cancelled) return;
+        itemsRef.current = localItems;
+        projectsRef.current = localProjects;
+        setItems(visibleRecords(localItems));
+        setProjects(visibleRecords(localProjects));
       } catch {
+        // A corrupt cache should not prevent a fresh Firebase session.
       } finally {
-        setIsLoaded(true);
+        if (!cancelled) setIsLoaded(true);
       }
-
-      loadFromServer();
     }
-    init();
+    void loadLocal();
+    return () => { cancelled = true; };
   }, []);
 
-  async function ensureUserId(): Promise<string | null> {
-    if (userIdRef.current) return userIdRef.current;
-
-    try {
-      const cached = await AsyncStorage.getItem(USER_ID_KEY);
-      if (cached) {
-        userIdRef.current = cached;
-        return cached;
-      }
-
-      let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-      if (!deviceId) {
-        deviceId = generateUUID();
-        await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
-      }
-
-      const res = await fetch(`${getApiBase()}/clarity/auth`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId }),
-      });
-
-      if (!res.ok) return null;
-      const { userId } = (await res.json()) as { userId: string };
-      if (!userId) return null;
-
-      await AsyncStorage.setItem(USER_ID_KEY, userId);
-      userIdRef.current = userId;
-      return userId;
-    } catch {
-      return null;
-    }
-  }
-
-  async function loadFromServer() {
+  useEffect(() => {
+    if (!user?.uid || !isLoaded) return;
+    let firstSnapshot = true;
     setSyncStatus("syncing");
-    try {
-      const userId = await ensureUserId();
-      if (!userId) {
-        setSyncStatus("offline");
-        return;
+    const unsubscribe = subscribeToClarity(user.uid, (remote) => {
+      const localItems = itemsRef.current;
+      const localProjects = projectsRef.current;
+      const mergedItems = mergeRecords(localItems, remote.items);
+      const mergedProjects = mergeRecords(localProjects, remote.projects);
+      itemsRef.current = mergedItems;
+      projectsRef.current = mergedProjects;
+      setItems(visibleRecords(mergedItems));
+      setProjects(visibleRecords(mergedProjects));
+      void AsyncStorage.multiSet([
+        [ITEMS_KEY, JSON.stringify(mergedItems)],
+        [PROJECTS_KEY, JSON.stringify(mergedProjects)],
+      ]);
+
+      if (firstSnapshot) {
+        firstSnapshot = false;
+        const uploads = [
+          ...recordsToUpload(localItems, remote.items).map((record) => ({ record, kind: "item" as const })),
+          ...recordsToUpload(localProjects, remote.projects).map((record) => ({ record, kind: "project" as const })),
+        ];
+        if (uploads.length > 0) {
+          void saveClarityRecords(user.uid, uploads).catch((error: unknown) => {
+            console.error("[Clarity] initial Firestore upload failed:", error);
+            setSyncStatus("error");
+          });
+        }
       }
-
-      const deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-      if (!deviceId) {
-        setSyncStatus("offline");
-        return;
-      }
-
-      const res = await fetch(
-        `${getApiBase()}/clarity/data/${userId}?deviceId=${encodeURIComponent(deviceId)}`
-      );
-      if (!res.ok) {
-        setSyncStatus("error");
-        return;
-      }
-
-      const { items: serverItems, projects: serverProjects } =
-        (await res.json()) as { items: AppItem[]; projects: Project[] };
-
-      setItems((localItems) => {
-        const merged = mergeItems(localItems, serverItems);
-        AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(merged));
-        return merged;
-      });
-      setProjects((localProjects) => {
-        const merged = mergeProjects(localProjects, serverProjects);
-        AsyncStorage.setItem(PROJECTS_KEY, JSON.stringify(merged));
-        return merged;
-      });
       setSyncStatus("synced");
-    } catch {
-      setSyncStatus("offline");
-    }
+    }, (error) => {
+      console.error("[Clarity] Firestore listener failed:", error);
+      setSyncStatus("error");
+    });
+    return unsubscribe;
+  }, [isLoaded, user?.uid]);
+
+  function persist(record: AppItem | Project, kind: "item" | "project") {
+    if (!user?.uid) return;
+    setSyncStatus("syncing");
+    void saveClarityRecord(user.uid, record, kind)
+      .then(() => setSyncStatus("synced"))
+      .catch((error: unknown) => {
+        console.error("[Clarity] Firestore write failed:", error);
+        setSyncStatus("error");
+      });
   }
 
-  function mergeItems(local: AppItem[], server: AppItem[]): AppItem[] {
-    const map = new Map<string, AppItem>();
-    for (const item of server) map.set(item.id, item);
-    for (const item of local) {
-      const existing = map.get(item.id);
-      if (!existing || new Date(item.updatedAt) > new Date(existing.updatedAt)) {
-        map.set(item.id, item);
-      }
-    }
-    return Array.from(map.values()).sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+  function addItem(text: string): AppItem {
+    const now = new Date().toISOString();
+    const item: AppItem = {
+      id: generateUUID(),
+      text: text.trim(),
+      type: null,
+      area: null,
+      timing: null,
+      done: false,
+      doneAt: null,
+      projectId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = [item, ...itemsRef.current];
+    itemsRef.current = next;
+    setItems(visibleRecords(next));
+    void AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(next));
+    persist(item, "item");
+    return item;
   }
 
-  function mergeProjects(local: Project[], server: Project[]): Project[] {
-    const map = new Map<string, Project>();
-    for (const p of server) map.set(p.id, p);
-    for (const p of local) {
-      const existing = map.get(p.id);
-      if (!existing || new Date(p.updatedAt) > new Date(existing.updatedAt)) {
-        map.set(p.id, p);
-      }
-    }
-    return Array.from(map.values()).sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+  function updateItem(id: string, updates: Partial<AppItem>) {
+    const current = itemsRef.current.find((item) => item.id === id && !item.isDeleted);
+    if (!current) return;
+    const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
+    const next = itemsRef.current.map((item) => (item.id === id ? updated : item));
+    itemsRef.current = next;
+    setItems(visibleRecords(next));
+    void AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(next));
+    persist(updated, "item");
   }
 
-  async function pushItemToServer(item: AppItem) {
-    try {
-      const userId = await ensureUserId();
-      if (!userId) return;
-      const deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-      if (!deviceId) return;
-
-      setSyncStatus("syncing");
-      const res = await fetch(`${getApiBase()}/clarity/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          deviceId,
-          items: [
-            {
-              id: item.id,
-              text: item.text,
-              type: item.type,
-              area: item.area,
-              timing: item.timing,
-              is_triaged: !!(item.type && item.area && item.timing),
-              is_deleted: false,
-              is_completed: item.done,
-              project_id: item.projectId,
-              createdAt: item.createdAt,
-              updatedAt: item.updatedAt,
-            },
-          ],
-        }),
-      });
-      setSyncStatus(res.ok ? "synced" : "error");
-    } catch {
-      setSyncStatus("offline");
-    }
+  function deleteItem(id: string) {
+    const current = itemsRef.current.find((item) => item.id === id && !item.isDeleted);
+    if (!current) return;
+    const tombstone = { ...current, isDeleted: true, updatedAt: new Date().toISOString() };
+    const next = itemsRef.current.map((item) => (item.id === id ? tombstone : item));
+    itemsRef.current = next;
+    setItems(visibleRecords(next));
+    void AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(next));
+    persist(tombstone, "item");
   }
 
-  async function pushProjectToServer(project: Project) {
-    try {
-      const userId = await ensureUserId();
-      if (!userId) return;
-      const deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-      if (!deviceId) return;
-
-      setSyncStatus("syncing");
-      const res = await fetch(`${getApiBase()}/clarity/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          deviceId,
-          projects: [
-            {
-              id: project.id,
-              title: project.name,
-              area: project.area,
-              status: "active",
-              createdAt: project.createdAt,
-              updatedAt: project.updatedAt,
-            },
-          ],
-        }),
-      });
-      setSyncStatus(res.ok ? "synced" : "error");
-    } catch {
-      setSyncStatus("offline");
-    }
+  function markDone(id: string) {
+    const current = itemsRef.current.find((item) => item.id === id && !item.isDeleted);
+    if (!current) return;
+    updateItem(id, { done: !current.done, doneAt: current.done ? null : new Date().toISOString() });
   }
 
-  const persistItems = useCallback(async (next: AppItem[]) => {
-    await AsyncStorage.setItem(ITEMS_KEY, JSON.stringify(next));
-  }, []);
+  function addProject(name: string, area: Project["area"] = null): Project {
+    const now = new Date().toISOString();
+    const project: Project = {
+      id: generateUUID(),
+      name: name.trim(),
+      area,
+      createdAt: now,
+      updatedAt: now,
+      nextAction: "",
+      status: "not-started",
+    };
+    const next = [project, ...projectsRef.current];
+    projectsRef.current = next;
+    setProjects(visibleRecords(next));
+    void AsyncStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
+    persist(project, "project");
+    return project;
+  }
 
-  const persistProjects = useCallback(async (next: Project[]) => {
-    await AsyncStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
-  }, []);
+  function updateProject(id: string, updates: Partial<Project>) {
+    const current = projectsRef.current.find((project) => project.id === id && !project.isDeleted);
+    if (!current) return;
+    const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
+    const next = projectsRef.current.map((project) => (project.id === id ? updated : project));
+    projectsRef.current = next;
+    setProjects(visibleRecords(next));
+    void AsyncStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
+    persist(updated, "project");
+  }
 
-  const addItem = useCallback(
-    (text: string): AppItem => {
-      const now = new Date().toISOString();
-      const item: AppItem = {
-        id: makeId(),
-        text: text.trim(),
-        type: null,
-        area: null,
-        timing: null,
-        done: false,
-        doneAt: null,
-        projectId: null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setItems((prev) => {
-        const next = [item, ...prev];
-        persistItems(next);
-        return next;
-      });
-      pushItemToServer(item);
-      return item;
-    },
-    [persistItems]
-  );
-
-  const updateItem = useCallback(
-    (id: string, updates: Partial<AppItem>) => {
-      let updated: AppItem | null = null;
-      setItems((prev) => {
-        const next = prev.map((it) => {
-          if (it.id === id) {
-            updated = { ...it, ...updates, updatedAt: new Date().toISOString() };
-            return updated;
-          }
-          return it;
-        });
-        persistItems(next);
-        return next;
-      });
-      setTimeout(() => {
-        if (updated) pushItemToServer(updated);
-      }, 0);
-    },
-    [persistItems]
-  );
-
-  const deleteItem = useCallback(
-    (id: string) => {
-      let toDelete: AppItem | undefined;
-      setItems((prev) => {
-        toDelete = prev.find((it) => it.id === id);
-        const next = prev.filter((it) => it.id !== id);
-        persistItems(next);
-        return next;
-      });
-      // Push a tombstone so the server marks it deleted
-      setTimeout(async () => {
-        if (!toDelete) return;
-        try {
-          const userId = await ensureUserId();
-          if (!userId) return;
-          const deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-          if (!deviceId) return;
-          await fetch(`${getApiBase()}/clarity/sync`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId,
-              deviceId,
-              items: [
-                {
-                  id: toDelete.id,
-                  text: toDelete.text,
-                  type: toDelete.type,
-                  area: toDelete.area,
-                  timing: toDelete.timing,
-                  is_deleted: true,
-                  is_completed: toDelete.done,
-                  project_id: toDelete.projectId,
-                  createdAt: toDelete.createdAt,
-                  updatedAt: new Date().toISOString(),
-                },
-              ],
-            }),
-          });
-        } catch {}
-      }, 0);
-    },
-    [persistItems]
-  );
-
-  const markDone = useCallback(
-    (id: string) => {
-      let updated: AppItem | null = null;
-      setItems((prev) => {
-        const next = prev.map((it) => {
-          if (it.id === id) {
-            updated = {
-              ...it,
-              done: !it.done,
-              doneAt: !it.done ? new Date().toISOString() : null,
-              updatedAt: new Date().toISOString(),
-            };
-            return updated;
-          }
-          return it;
-        });
-        persistItems(next);
-        return next;
-      });
-      setTimeout(() => {
-        if (updated) pushItemToServer(updated);
-      }, 0);
-    },
-    [persistItems]
-  );
-
-  const addProject = useCallback(
-    (name: string, area: Project["area"] = null): Project => {
-      const now = new Date().toISOString();
-      const project: Project = {
-        id: makeId(),
-        name: name.trim(),
-        area,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setProjects((prev) => {
-        const next = [project, ...prev];
-        persistProjects(next);
-        return next;
-      });
-      pushProjectToServer(project);
-      return project;
-    },
-    [persistProjects]
-  );
-
-  const updateProject = useCallback(
-    (id: string, updates: Partial<Project>) => {
-      let updated: Project | null = null;
-      setProjects((prev) => {
-        const next = prev.map((p) => {
-          if (p.id === id) {
-            updated = { ...p, ...updates, updatedAt: new Date().toISOString() };
-            return updated;
-          }
-          return p;
-        });
-        persistProjects(next);
-        return next;
-      });
-      setTimeout(() => {
-        if (updated) pushProjectToServer(updated);
-      }, 0);
-    },
-    [persistProjects]
-  );
-
-  const deleteProject = useCallback(
-    (id: string) => {
-      let toDelete: Project | undefined;
-      setProjects((prev) => {
-        toDelete = prev.find((p) => p.id === id);
-        const next = prev.filter((p) => p.id !== id);
-        persistProjects(next);
-        return next;
-      });
-      setItems((prev) => {
-        const next = prev.map((it) =>
-          it.projectId === id
-            ? { ...it, projectId: null, updatedAt: new Date().toISOString() }
-            : it
-        );
-        persistItems(next);
-        return next;
-      });
-      // Push a tombstone so server marks it deleted
-      setTimeout(async () => {
-        if (!toDelete) return;
-        try {
-          const userId = await ensureUserId();
-          if (!userId) return;
-          const deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-          if (!deviceId) return;
-          await fetch(`${getApiBase()}/clarity/sync`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId,
-              deviceId,
-              projects: [
-                {
-                  id: toDelete.id,
-                  title: toDelete.name,
-                  area: toDelete.area,
-                  status: "deleted",
-                  createdAt: toDelete.createdAt,
-                  updatedAt: new Date().toISOString(),
-                },
-              ],
-            }),
-          });
-        } catch {}
-      }, 0);
-    },
-    [persistProjects, persistItems]
-  );
+  function deleteProject(id: string) {
+    const current = projectsRef.current.find((project) => project.id === id && !project.isDeleted);
+    if (!current) return;
+    const tombstone = { ...current, isDeleted: true, updatedAt: new Date().toISOString() };
+    const changedItems = itemsRef.current
+      .filter((item) => item.projectId === id && !item.isDeleted)
+      .map((item) => ({ ...item, projectId: null, updatedAt: new Date().toISOString() }));
+    const changedById = new Map(changedItems.map((item) => [item.id, item]));
+    const nextItems = itemsRef.current.map((item) => changedById.get(item.id) ?? item);
+    const nextProjects = projectsRef.current.map((project) => (project.id === id ? tombstone : project));
+    itemsRef.current = nextItems;
+    projectsRef.current = nextProjects;
+    setItems(visibleRecords(nextItems));
+    setProjects(visibleRecords(nextProjects));
+    void AsyncStorage.multiSet([
+      [ITEMS_KEY, JSON.stringify(nextItems)],
+      [PROJECTS_KEY, JSON.stringify(nextProjects)],
+    ]);
+    if (user?.uid) {
+      void saveClarityRecords(user.uid, [
+        ...changedItems.map((record) => ({ record, kind: "item" as const })),
+        { record: tombstone, kind: "project" as const },
+      ]).catch(() => setSyncStatus("error"));
+    }
+  }
 
   return (
-    <AppDataContext.Provider
-      value={{
-        items,
-        projects,
-        syncStatus,
-        addItem,
-        updateItem,
-        deleteItem,
-        markDone,
-        addProject,
-        updateProject,
-        deleteProject,
-        isLoaded,
-      }}
-    >
+    <AppDataContext.Provider value={{ items, projects, syncStatus, addItem, updateItem, deleteItem, markDone, addProject, updateProject, deleteProject, isLoaded }}>
       {children}
     </AppDataContext.Provider>
   );
 }
 
-export function useAppData() {
-  const ctx = useContext(AppDataContext);
-  if (!ctx) throw new Error("useAppData must be used inside AppDataProvider");
-  return ctx;
+export function useAppData(): AppDataContextValue {
+  const context = useContext(AppDataContext);
+  if (!context) throw new Error("useAppData must be used inside AppDataProvider");
+  return context;
 }

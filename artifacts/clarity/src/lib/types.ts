@@ -45,6 +45,8 @@ export interface Project {
   createdAt: string;
   /** Last user-visible mutation; used for deterministic cross-device merging. */
   updatedAt?: string;
+  /** Tombstone used when a project is deleted from another device. */
+  isDeleted?: boolean;
 }
 
 export interface UserSettings {
