@@ -29,11 +29,16 @@ function timestampToIso(value: unknown): string | null {
 
 function recordFromDocument(data: DocumentData): SyncRecord {
   const createdAt = typeof data.createdAt === "string" ? data.createdAt : new Date().toISOString();
+  // Firestore's server timestamp reflects upload time, not the user's edit
+  // time. Prefer the client timestamp for deterministic phone/browser merges.
+  const clientUpdatedAt = typeof data.clientUpdatedAt === "string" && !Number.isNaN(Date.parse(data.clientUpdatedAt))
+    ? data.clientUpdatedAt
+    : null;
   return {
     ...data,
     id: String(data.id ?? ""),
     createdAt,
-    updatedAt: timestampToIso(data.updatedAt) ?? data.clientUpdatedAt ?? createdAt,
+    updatedAt: clientUpdatedAt ?? timestampToIso(data.updatedAt) ?? createdAt,
     isDeleted: Boolean(data.isDeleted),
   } as SyncRecord;
 }
