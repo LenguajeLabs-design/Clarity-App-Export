@@ -3,7 +3,7 @@ import { useLocalStorage } from "./use-local-storage";
 import { CapturedItem, Project, UserSettings, AppData } from "./types";
 import { v4 as uuidv4 } from "uuid";
 import { useSyncStatus } from "./useSyncStatus";
-import { saveClarityRecord, saveClarityRecords, subscribeToClarity } from "./firestore-sync";
+import { replaceClarityRecords, saveClarityRecord, saveClarityRecords, subscribeToClarity } from "./firestore-sync";
 
 export const BLANK_ITEM = (text: string): CapturedItem => ({
   id: uuidv4(),
@@ -243,7 +243,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const promotionTime = new Date().toISOString();
     setSyncing();
     try {
-      await saveClarityRecords(userId, [
+      await replaceClarityRecords(userId, [
         ...itemsRef.current.map((record) => ({ record, kind: "item" as const })),
         ...projectsRef.current.map((record) => ({ record, kind: "project" as const })),
       ], promotionTime);
