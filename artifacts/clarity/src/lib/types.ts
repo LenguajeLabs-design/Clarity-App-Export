@@ -78,4 +78,5 @@ export interface AppData {
    *  Pass syncedAt so clarity_last_modified reflects when the remote data was
    *  last modified, not the moment of replacement. */
   replaceAllData: (items: CapturedItem[], projects: Project[], settings: UserSettings, syncedAt?: string) => void;
+  promoteCurrentDeviceData: () => Promise<void>;
 }

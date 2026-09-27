@@ -238,6 +238,22 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  async function promoteCurrentDeviceData(): Promise<void> {
+    if (!userId) throw new Error("Sign in to upload this device's data.");
+    const promotionTime = new Date().toISOString();
+    setSyncing();
+    try {
+      await saveClarityRecords(userId, [
+        ...itemsRef.current.map((record) => ({ record, kind: "item" as const })),
+        ...projectsRef.current.map((record) => ({ record, kind: "project" as const })),
+      ], promotionTime);
+      setSynced();
+    } catch (error) {
+      setSyncError();
+      throw error;
+    }
+  }
+
   return (
     <AppDataContext.Provider value={{
       items,
@@ -253,6 +269,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       updateProject,
       updateSettings: setSettings,
       replaceAllData,
+      promoteCurrentDeviceData,
     }}>
       {children}
     </AppDataContext.Provider>

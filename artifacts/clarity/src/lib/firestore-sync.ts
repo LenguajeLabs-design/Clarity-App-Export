@@ -69,6 +69,7 @@ export async function saveClarityRecord(
   userId: string,
   record: CapturedItem | Project,
   kind: SyncKind,
+  clientUpdatedAtOverride?: string,
 ): Promise<void> {
   const records = collectionFor(userId);
   if (!records) throw new Error("Firebase is not configured");
@@ -76,7 +77,7 @@ export async function saveClarityRecord(
     ...record,
     kind,
     id: record.id,
-    clientUpdatedAt: record.updatedAt ?? record.createdAt,
+    clientUpdatedAt: clientUpdatedAtOverride ?? record.updatedAt ?? record.createdAt,
     updatedAt: serverTimestamp(),
   });
 }
@@ -84,6 +85,7 @@ export async function saveClarityRecord(
 export async function saveClarityRecords(
   userId: string,
   records: Array<{ record: CapturedItem | Project; kind: SyncKind }>,
+  clientUpdatedAtOverride?: string,
 ): Promise<void> {
-  await Promise.all(records.map(({ record, kind }) => saveClarityRecord(userId, record, kind)));
+  await Promise.all(records.map(({ record, kind }) => saveClarityRecord(userId, record, kind, clientUpdatedAtOverride)));
 }
