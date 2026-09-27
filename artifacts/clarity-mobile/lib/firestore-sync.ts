@@ -1,4 +1,4 @@
-import { collection, doc, onSnapshot, serverTimestamp, setDoc, type DocumentData, type Timestamp } from "firebase/firestore";
+import { collection, doc, onSnapshot, serverTimestamp, setDoc, writeBatch, type DocumentData, type Timestamp } from "firebase/firestore";
 import { AppItem, Project } from "@/lib/types";
 import { db } from "@/lib/firebase";
 
@@ -67,7 +67,23 @@ export async function saveClarityRecord(userId: string, record: AppItem | Projec
 
 export async function saveClarityRecords(
   userId: string,
-  records: Array<{ record: AppItem | Project; kind: "item" | "project" }>,
+  recordEntries: Array<{ record: AppItem | Project; kind: "item" | "project" }>,
 ): Promise<void> {
-  await Promise.all(records.map(({ record, kind }) => saveClarityRecord(userId, record, kind)));
+  const records = recordsFor(userId);
+  if (!records || !db) throw new Error("Firebase is not configured");
+
+  for (let start = 0; start < recordEntries.length; start += 400) {
+    const batch = writeBatch(db);
+    const chunk = recordEntries.slice(start, start + 400);
+    chunk.forEach(({ record, kind }) => {
+      batch.set(doc(records, record.id), {
+        ...record,
+        id: record.id,
+        kind,
+        clientUpdatedAt: record.updatedAt,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
 }
