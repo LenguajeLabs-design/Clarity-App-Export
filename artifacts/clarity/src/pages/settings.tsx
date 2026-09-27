@@ -11,6 +11,7 @@ import {
   Moon,
   Monitor,
   Upload,
+  CloudUpload,
   LogOut,
 } from "lucide-react";
 
@@ -141,6 +142,23 @@ function ImportDataSection() {
 
 function FirebaseAccountSection() {
   const { user, signOutUser } = useFirebaseAuth();
+  const { promoteCurrentDeviceData } = useAppData();
+  const [promoting, setPromoting] = useState(false);
+  const [promotionMessage, setPromotionMessage] = useState('');
+
+  async function handlePromoteCurrentDevice() {
+    setPromoting(true);
+    setPromotionMessage('');
+    try {
+      await promoteCurrentDeviceData();
+      setPromotionMessage('This device is now the current cloud copy. Other signed-in devices will update automatically.');
+    } catch {
+      setPromotionMessage('Could not upload this device yet. Check your connection and try again.');
+    } finally {
+      setPromoting(false);
+    }
+  }
+
   return (
     <div className="bg-card p-5 rounded-2xl border border-primary/20 shadow-sm mb-4">
       <div className="flex items-center gap-2 mb-1">
@@ -161,6 +179,21 @@ function FirebaseAccountSection() {
         >
           <LogOut className="w-3.5 h-3.5" /> Sign out
         </button>
+      </div>
+      <div className="mt-5 rounded-xl border border-amber-300/60 bg-amber-50/70 p-4 dark:border-amber-700/50 dark:bg-amber-950/20">
+        <p className="text-sm font-semibold text-foreground">Phone data recovery</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          If this device has your newest data and another device shows an older copy, use this once to make the current phone data the cloud copy.
+        </p>
+        <button
+          onClick={() => void handlePromoteCurrentDevice()}
+          disabled={promoting}
+          className="mt-3 flex items-center gap-2 rounded-xl border border-amber-400/70 bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-amber-100/60 disabled:opacity-60 dark:hover:bg-amber-900/30"
+        >
+          <CloudUpload className="h-3.5 w-3.5" />
+          {promoting ? 'Uploading current device data…' : 'Make this device current'}
+        </button>
+        {promotionMessage && <p className="mt-2 text-xs leading-5 text-muted-foreground">{promotionMessage}</p>}
       </div>
     </div>
   );
