@@ -4,6 +4,7 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
+  writeBatch,
   type DocumentData,
   type Timestamp,
 } from "firebase/firestore";
@@ -84,8 +85,27 @@ export async function saveClarityRecord(
 
 export async function saveClarityRecords(
   userId: string,
-  records: Array<{ record: CapturedItem | Project; kind: SyncKind }>,
+  recordEntries: Array<{ record: CapturedItem | Project; kind: SyncKind }>,
   clientUpdatedAtOverride?: string,
 ): Promise<void> {
-  await Promise.all(records.map(({ record, kind }) => saveClarityRecord(userId, record, kind, clientUpdatedAtOverride)));
+  const records = collectionFor(userId);
+  if (!records || !db) throw new Error("Firebase is not configured");
+
+  // Firestore batches are capped at 500 writes. Keep a lower ceiling so a
+  // large phone history uploads predictably instead of opening hundreds of
+  // concurrent requests at once.
+  for (let start = 0; start < recordEntries.length; start += 400) {
+    const batch = writeBatch(db);
+    const chunk = recordEntries.slice(start, start + 400);
+    chunk.forEach(({ record, kind }) => {
+      batch.set(doc(records, record.id), {
+        ...record,
+        kind,
+        id: record.id,
+        clientUpdatedAt: clientUpdatedAtOverride ?? record.updatedAt ?? record.createdAt,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
 }
