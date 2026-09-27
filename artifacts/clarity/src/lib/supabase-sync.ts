@@ -47,6 +47,7 @@ export async function fetchFromSupabase(
       dueDate: (row['dueDate'] as string | null) ?? null,
       nextAction: (row['nextAction'] as string) ?? '',
       status: (row['status'] as Project['status']) ?? 'not-started',
+      isDeleted: Boolean(row['isDeleted'] ?? row['is_deleted']),
       createdAt: row['createdAt'] as string,
       updatedAt: (row['updatedAt'] as string | undefined) ?? row['createdAt'] as string,
     }));

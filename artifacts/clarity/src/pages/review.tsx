@@ -60,7 +60,7 @@ export default function Review() {
 
   const untriaged = items.filter((item: CapturedItem) => !item.isTriaged && !item.isDeleted);
   const waitingItems = items.filter((item: CapturedItem) => item.isTriaged && !item.isDeleted && !item.isCompleted && !!item.waitingOn);
-  const activeProjects = projects.filter((project: Project) => project.status !== "done");
+  const activeProjects = projects.filter((project: Project) => !project.isDeleted && project.status !== "done");
   const weekItems = items.filter((item: CapturedItem) => item.isTriaged && !item.isDeleted && !item.isCompleted && item.timing === "this-week");
   const priorityCount = weekItems.filter((item: CapturedItem) => item.isPriority).length;
   const waitingItem = waitingItems[session.waitingIndex];

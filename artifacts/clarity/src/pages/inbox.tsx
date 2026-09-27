@@ -184,7 +184,7 @@ export default function Inbox() {
       </div>}
 
       {panel === "project" && <div className="rounded-2xl border border-border/60 bg-card p-5">
-        <p className="mb-3 text-lg font-semibold">Choose a project</p><div className="max-h-64 space-y-2 overflow-y-auto no-scrollbar">{projects.filter((p: Project) => p.status !== "done").map((p: Project) => <button key={p.id} onClick={() => setSelectedProject(p.id)} className={`min-h-[48px] w-full rounded-xl border px-4 text-left font-medium ${selectedProject === p.id ? "border-primary bg-primary/5" : "border-border/60"}`}>{p.title}</button>)}{projects.filter((p: Project) => p.status !== "done").length === 0 && <p className="py-4 text-sm text-muted-foreground">No active projects yet.</p>}</div>
+        <p className="mb-3 text-lg font-semibold">Choose a project</p><div className="max-h-64 space-y-2 overflow-y-auto no-scrollbar">{projects.filter((p: Project) => !p.isDeleted && p.status !== "done").map((p: Project) => <button key={p.id} onClick={() => setSelectedProject(p.id)} className={`min-h-[48px] w-full rounded-xl border px-4 text-left font-medium ${selectedProject === p.id ? "border-primary bg-primary/5" : "border-border/60"}`}>{p.title}</button>)}{projects.filter((p: Project) => !p.isDeleted && p.status !== "done").length === 0 && <p className="py-4 text-sm text-muted-foreground">No active projects yet.</p>}</div>
         <div className="mt-4 flex gap-3"><Button variant="ghost" onClick={() => setPanel(null)} className="h-12 flex-1 rounded-xl">Back</Button><Button disabled={!selectedProject} onClick={() => finish({ projectId: selectedProject, timing: "this-week" }, "Added to project")} className="h-12 flex-1 rounded-xl">Add</Button></div>
       </div>}
 

@@ -1,15 +1,9 @@
 import { createContext, useContext, useEffect, useRef } from "react";
 import { useLocalStorage } from "./use-local-storage";
 import { CapturedItem, Project, UserSettings, AppData } from "./types";
-import { v4 as uuidv4 } from 'uuid';
-import { useSyncStatus } from './useSyncStatus';
-import {
-  syncItem,
-  syncItems,
-  syncProject,
-  syncProjects,
-  fetchFromSupabase,
-} from './supabase-sync';
+import { v4 as uuidv4 } from "uuid";
+import { useSyncStatus } from "./useSyncStatus";
+import { saveClarityRecord, saveClarityRecords, subscribeToClarity } from "./firestore-sync";
 
 export const BLANK_ITEM = (text: string): CapturedItem => ({
   id: uuidv4(),
@@ -33,181 +27,233 @@ export const BLANK_ITEM = (text: string): CapturedItem => ({
 
 const AppDataContext = createContext<AppData | null>(null);
 
-/**
- * Record the current time as the "last data modification" timestamp.
- * This timestamp supports migration diagnostics and deterministic cloud merges.
- * Must be called on every real data mutation (add / update / delete).
- */
 function touchModified() {
   try {
-    localStorage.setItem('clarity_last_modified', new Date().toISOString());
-  } catch { /* non-fatal */ }
+    localStorage.setItem("clarity_last_modified", new Date().toISOString());
+  } catch {
+    // Local metadata is non-critical.
+  }
+}
+
+function recordTime(record: { createdAt: string; updatedAt?: string }): number {
+  const time = Date.parse(record.updatedAt ?? record.createdAt);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function mergeByTimestamp<T extends { id: string; createdAt: string; updatedAt?: string }>(
+  local: T[],
+  remote: T[],
+): T[] {
+  const byId = new Map(local.map((record) => [record.id, record]));
+  for (const candidate of remote) {
+    const current = byId.get(candidate.id);
+    if (!current || recordTime(candidate) >= recordTime(current)) byId.set(candidate.id, candidate);
+  }
+  return [...byId.values()];
+}
+
+function recordsToUpload<T extends { id: string; createdAt: string; updatedAt?: string }>(
+  local: T[],
+  remote: T[],
+): T[] {
+  const remoteById = new Map(remote.map((record) => [record.id, record]));
+  return local.filter((record) => {
+    const remoteRecord = remoteById.get(record.id);
+    return !remoteRecord || recordTime(record) >= recordTime(remoteRecord);
+  });
 }
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useLocalStorage<CapturedItem[]>('clarity_items', []);
-  const [projects, setProjects] = useLocalStorage<Project[]>('clarity_projects', []);
-  const [settings, setSettings] = useLocalStorage<UserSettings>('clarity_settings', {
-    largeText: false, highContrast: false, reducedMotion: false, theme: 'auto',
+  const [items, setItems] = useLocalStorage<CapturedItem[]>("clarity_items", []);
+  const [projects, setProjects] = useLocalStorage<Project[]>("clarity_projects", []);
+  const [settings, setSettings] = useLocalStorage<UserSettings>("clarity_settings", {
+    largeText: false,
+    highContrast: false,
+    reducedMotion: false,
+    theme: "auto",
   });
 
   const { userId, setSyncing, setSynced, setSyncError } = useSyncStatus();
+  const itemsRef = useRef(items);
+  const projectsRef = useRef(projects);
 
-  const hasStartedSync = useRef(false);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { projectsRef.current = projects; }, [projects]);
+
   useEffect(() => {
-    if (!userId || hasStartedSync.current) return;
-    hasStartedSync.current = true;
+    if (!userId) return;
+    let firstSnapshot = true;
+    setSyncing();
 
-    const mergeRemote = async () => {
-      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
-      setSyncing();
-      const remote = await fetchFromSupabase(userId);
-      if (!remote) { setSyncError(); return; }
-      setItems((prev) => {
-        const byId = new Map(prev.map((i) => [i.id, i]));
-        for (const ri of remote.items) {
-          const local = byId.get(ri.id);
-          const localTime = local?.updatedAt ?? local?.createdAt ?? '';
-          const remoteTime = ri.updatedAt ?? ri.createdAt;
-          if (!local || remoteTime >= localTime) byId.set(ri.id, ri);
+    const unsubscribe = subscribeToClarity(userId, (remote) => {
+      const localItems = itemsRef.current;
+      const localProjects = projectsRef.current;
+      const mergedItems = mergeByTimestamp(localItems, remote.items);
+      const mergedProjects = mergeByTimestamp(localProjects, remote.projects);
+      itemsRef.current = mergedItems;
+      projectsRef.current = mergedProjects;
+      setItems(mergedItems);
+      setProjects(mergedProjects);
+
+      if (firstSnapshot) {
+        firstSnapshot = false;
+        const uploads = [
+          ...recordsToUpload(localItems, remote.items).map((record) => ({ record, kind: "item" as const })),
+          ...recordsToUpload(localProjects, remote.projects).map((record) => ({ record, kind: "project" as const })),
+        ];
+        if (uploads.length > 0) {
+          void saveClarityRecords(userId, uploads).catch((error: unknown) => {
+            console.error("[Clarity] initial Firestore upload failed:", error);
+            setSyncError();
+          });
         }
-        return Array.from(byId.values());
-      });
-      setProjects((prev) => {
-        const byId = new Map(prev.map((p) => [p.id, p]));
-        for (const rp of remote.projects) {
-          const local = byId.get(rp.id);
-          const localTime = local?.updatedAt ?? local?.createdAt ?? '';
-          const remoteTime = rp.updatedAt ?? rp.createdAt;
-          if (!local || remoteTime >= localTime) byId.set(rp.id, rp);
-        }
-        return Array.from(byId.values());
-      });
+      }
       setSynced();
-    };
+    }, (error) => {
+      console.error("[Clarity] Firestore listener failed:", error);
+      setSyncError();
+    });
 
-    // Local-first: queue the complete cache, then merge canonical cloud state.
-    void syncItems(items, userId, setSyncing, setSynced, setSyncError).then(mergeRemote);
-    void syncProjects(projects, userId, setSyncing, setSynced, setSyncError);
-    const interval = window.setInterval(() => void mergeRemote(), 30_000);
-    const onFocus = () => void mergeRemote();
-    window.addEventListener('online', onFocus);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('online', onFocus);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+    return unsubscribe;
+  }, [setSynced, setSyncError, setSyncing, userId]);
+
+  function persist(record: CapturedItem | Project, kind: "item" | "project") {
+    if (!userId) return;
+    setSyncing();
+    void saveClarityRecord(userId, record, kind)
+      .then(setSynced)
+      .catch((error: unknown) => {
+        console.error("[Clarity] Firestore write failed:", error);
+        setSyncError();
+      });
+  }
 
   const addItem = (text: string) => {
     const newItem = BLANK_ITEM(text);
-    setItems((prev) => [newItem, ...prev]);
+    const nextItems = [newItem, ...itemsRef.current];
+    itemsRef.current = nextItems;
+    setItems(nextItems);
     touchModified();
-    void syncItem(newItem, userId, setSyncing, setSynced, setSyncError);
+    persist(newItem, "item");
   };
 
   const addItemsBatch = (texts: string[]) => {
-    const newItems = texts.filter((t) => t.trim()).map((t) => BLANK_ITEM(t.trim()));
-    setItems((prev) => [...newItems, ...prev]);
-    if (newItems.length > 0) touchModified();
-    void syncItems(newItems, userId, setSyncing, setSynced, setSyncError);
+    const newItems = texts.filter((text) => text.trim()).map((text) => BLANK_ITEM(text.trim()));
+    if (newItems.length === 0) return;
+    const nextItems = [...newItems, ...itemsRef.current];
+    itemsRef.current = nextItems;
+    setItems(nextItems);
+    touchModified();
+    if (userId) {
+      setSyncing();
+      void saveClarityRecords(userId, newItems.map((record) => ({ record, kind: "item" as const })))
+        .then(setSynced)
+        .catch(setSyncError);
+    }
   };
 
   const addItemsBatchStructured = (structured: Array<{
     text: string;
-    type?: CapturedItem['type'];
-    area?: CapturedItem['area'];
-    timing?: CapturedItem['timing'];
+    type?: CapturedItem["type"];
+    area?: CapturedItem["area"];
+    timing?: CapturedItem["timing"];
   }>) => {
     const newItems = structured
-      .filter((s) => s.text.trim())
-      .map((s) => ({
-        ...BLANK_ITEM(s.text.trim()),
-        ...(s.type ? { type: s.type } : {}),
-        ...(s.area ? { area: s.area } : {}),
-        ...(s.timing ? { timing: s.timing } : {}),
+      .filter((entry) => entry.text.trim())
+      .map((entry) => ({
+        ...BLANK_ITEM(entry.text.trim()),
+        ...(entry.type ? { type: entry.type } : {}),
+        ...(entry.area ? { area: entry.area } : {}),
+        ...(entry.timing ? { timing: entry.timing } : {}),
       }));
-    setItems((prev) => [...newItems, ...prev]);
-    if (newItems.length > 0) touchModified();
-    void syncItems(newItems, userId, setSyncing, setSynced, setSyncError);
+    if (newItems.length === 0) return;
+    const nextItems = [...newItems, ...itemsRef.current];
+    itemsRef.current = nextItems;
+    setItems(nextItems);
+    touchModified();
+    if (userId) {
+      setSyncing();
+      void saveClarityRecords(userId, newItems.map((record) => ({ record, kind: "item" as const })))
+        .then(setSynced)
+        .catch(setSyncError);
+    }
   };
 
   const updateItem = (id: string, updates: Partial<CapturedItem>) => {
-    const updatedAt = new Date().toISOString();
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates, updatedAt } : i)));
+    const current = itemsRef.current.find((item) => item.id === id);
+    if (!current) return;
+    const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
+    const nextItems = itemsRef.current.map((item) => (item.id === id ? updated : item));
+    itemsRef.current = nextItems;
+    setItems(nextItems);
     touchModified();
-    const currentItem = items.find((i) => i.id === id);
-    if (currentItem) {
-      void syncItem({ ...currentItem, ...updates, updatedAt }, userId, setSyncing, setSynced, setSyncError);
-    }
+    persist(updated, "item");
   };
 
-  const completeItem = (id: string) => {
-    updateItem(id, { isCompleted: true, completedAt: new Date().toISOString() });
-  };
+  const completeItem = (id: string) => updateItem(id, { isCompleted: true, completedAt: new Date().toISOString() });
+  const uncompleteItem = (id: string) => updateItem(id, { isCompleted: false, completedAt: null });
 
-  const uncompleteItem = (id: string) => {
-    updateItem(id, { isCompleted: false, completedAt: null });
-  };
-
-  const addProject = (p: Omit<Project, 'id' | 'createdAt'>) => {
+  const addProject = (project: Omit<Project, "id" | "createdAt">) => {
     const now = new Date().toISOString();
-    const newProject: Project = { ...p, id: uuidv4(), createdAt: now, updatedAt: now };
-    setProjects((prev) => [newProject, ...prev]);
+    const newProject: Project = { ...project, id: uuidv4(), createdAt: now, updatedAt: now };
+    const nextProjects = [newProject, ...projectsRef.current];
+    projectsRef.current = nextProjects;
+    setProjects(nextProjects);
     touchModified();
-    void syncProject(newProject, userId, setSyncing, setSynced, setSyncError);
+    persist(newProject, "project");
   };
 
   const updateProject = (id: string, updates: Partial<Project>) => {
-    const updatedAt = new Date().toISOString();
-    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt } : p)));
+    const current = projectsRef.current.find((project) => project.id === id);
+    if (!current) return;
+    const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
+    const nextProjects = projectsRef.current.map((project) => (project.id === id ? updated : project));
+    projectsRef.current = nextProjects;
+    setProjects(nextProjects);
     touchModified();
-    const currentProject = projects.find((p) => p.id === id);
-    if (currentProject) {
-      void syncProject({ ...currentProject, ...updates, updatedAt }, userId, setSyncing, setSynced, setSyncError);
-    }
+    persist(updated, "project");
   };
 
-  // Replace the full dataset at once after an import or device link.
-  // Updates both React state and localStorage atomically.
-  // syncedAt is the remote's modification timestamp; we store it so future
-  // syncs compare modification times correctly rather than treating this
-  // device as "freshly edited".
   const replaceAllData = (
     newItems: CapturedItem[],
     newProjects: Project[],
     newSettings: UserSettings,
     syncedAt?: string,
   ) => {
+    itemsRef.current = newItems;
+    projectsRef.current = newProjects;
     setItems(newItems);
     setProjects(newProjects);
     setSettings(newSettings);
     try {
-      localStorage.setItem('clarity_last_modified', syncedAt ?? new Date().toISOString());
-    } catch { /* non-fatal */ }
-  };
-
-  const value: AppData = {
-    items,
-    projects,
-    settings,
-    addItem,
-    addItemsBatch,
-    addItemsBatchStructured,
-    updateItem,
-    completeItem,
-    uncompleteItem,
-    addProject,
-    updateProject,
-    updateSettings: setSettings,
-    replaceAllData,
+      localStorage.setItem("clarity_last_modified", syncedAt ?? new Date().toISOString());
+    } catch {
+      // Local metadata is non-critical.
+    }
+    if (userId) {
+      void saveClarityRecords(userId, [
+        ...newItems.map((record) => ({ record, kind: "item" as const })),
+        ...newProjects.map((record) => ({ record, kind: "project" as const })),
+      ]).catch(setSyncError);
+    }
   };
 
   return (
-    <AppDataContext.Provider value={value}>
+    <AppDataContext.Provider value={{
+      items,
+      projects,
+      settings,
+      addItem,
+      addItemsBatch,
+      addItemsBatchStructured,
+      updateItem,
+      completeItem,
+      uncompleteItem,
+      addProject,
+      updateProject,
+      updateSettings: setSettings,
+      replaceAllData,
+    }}>
       {children}
     </AppDataContext.Provider>
   );

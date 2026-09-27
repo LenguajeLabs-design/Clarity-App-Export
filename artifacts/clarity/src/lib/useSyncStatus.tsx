@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback } from 'react';
-import { useSupabaseAuth } from './useSupabaseAuth';
-import { isSupabaseConfigured } from './supabase';
+import { useFirebaseAuth } from './firebase-auth';
+import { isFirebaseConfigured } from './firebase';
 
 export type SyncStatus = 'local-only' | 'syncing' | 'synced' | 'error';
 
@@ -8,7 +8,7 @@ interface SyncStatusContextValue {
   status: SyncStatus;
   lastSyncedAt: Date | null;
   userId: string | null;
-  isSupabaseConfigured: boolean;
+  isFirebaseConfigured: boolean;
   setSyncing: () => void;
   setSynced: () => void;
   setSyncError: () => void;
@@ -20,7 +20,7 @@ export function SyncStatusProvider({ children }: { children: React.ReactNode }) 
   const [status, setStatus] = useState<SyncStatus>('local-only');
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  const { userId } = useSupabaseAuth();
+  const { user } = useFirebaseAuth();
 
   const setSyncing = useCallback(() => setStatus('syncing'), []);
   const setSynced = useCallback(() => {
@@ -31,7 +31,7 @@ export function SyncStatusProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <SyncStatusContext.Provider
-      value={{ status, lastSyncedAt, userId, isSupabaseConfigured, setSyncing, setSynced, setSyncError }}
+      value={{ status, lastSyncedAt, userId: user?.uid ?? null, isFirebaseConfigured, setSyncing, setSynced, setSyncError }}
     >
       {children}
     </SyncStatusContext.Provider>

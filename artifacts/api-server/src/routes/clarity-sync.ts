@@ -178,12 +178,17 @@ router.post("/clarity/sync", async (req, res) => {
       };
     });
 
-    const { error } = await sb
-      .from("clarity_items")
-      .upsert(rows, { onConflict: "id" });
-    if (error) {
-      console.error("[clarity-sync] items error:", error.message);
-      errors.push(`items: ${error.message}`);
+    if (items.length > 0 && rows.length === 0) {
+      errors.push("items: no valid rows");
+    }
+    if (rows.length > 0) {
+      const { error } = await sb
+        .from("clarity_items")
+        .upsert(rows, { onConflict: "id" });
+      if (error) {
+        console.error("[clarity-sync] items error:", error.message);
+        errors.push(`items: ${error.message}`);
+      }
     }
   }
 
@@ -202,10 +207,13 @@ router.post("/clarity/sync", async (req, res) => {
         id: p.id,
         user_id: userId,
         title: p.title,
-        area: p.area,
+        area: p.area === "work" || p.area === "home" || p.area === "family" || p.area === "personal"
+          ? p.area
+          : "personal",
         due_date: p.dueDate ?? p.due_date,
         next_action: p.nextAction ?? p.next_action,
-        status: p.status,
+        status: p.status === "in-progress" || p.status === "done" ? p.status : "not-started",
+        is_deleted: Boolean(p.isDeleted ?? p.is_deleted),
         created_at: p.createdAt ?? p.created_at,
         updated_at: safeTimestamp(
           p.updatedAt ?? p.updated_at,
@@ -214,12 +222,17 @@ router.post("/clarity/sync", async (req, res) => {
       };
     });
 
-    const { error } = await sb
-      .from("clarity_projects")
-      .upsert(rows, { onConflict: "id" });
-    if (error) {
-      console.error("[clarity-sync] projects error:", error.message);
-      errors.push(`projects: ${error.message}`);
+    if (projects.length > 0 && rows.length === 0) {
+      errors.push("projects: no valid rows");
+    }
+    if (rows.length > 0) {
+      const { error } = await sb
+        .from("clarity_projects")
+        .upsert(rows, { onConflict: "id" });
+      if (error) {
+        console.error("[clarity-sync] projects error:", error.message);
+        errors.push(`projects: ${error.message}`);
+      }
     }
   }
 
@@ -319,7 +332,7 @@ router.post("/clarity/link/redeem", async (req, res) => {
   }
 
   const [itemsRes, projectsRes] = await Promise.all([
-    sb.from("clarity_items").select("*").eq("user_id", userId).eq("is_deleted", false),
+    sb.from("clarity_items").select("*").eq("user_id", userId),
     sb.from("clarity_projects").select("*").eq("user_id", userId),
   ]);
 
@@ -370,8 +383,7 @@ router.get("/clarity/data/:userId", async (req, res) => {
     sb
       .from("clarity_projects")
       .select("*")
-      .eq("user_id", userId)
-      .neq("status", "deleted"),
+      .eq("user_id", userId),
   ]);
 
   if (itemsResult.error || projectsResult.error) {
@@ -407,6 +419,7 @@ router.get("/clarity/data/:userId", async (req, res) => {
     dueDate: row["due_date"] ?? null,
     nextAction: row["next_action"] ?? null,
     status: row["status"] ?? "active",
+    isDeleted: row["is_deleted"] ?? false,
     createdAt: row["created_at"],
     updatedAt: row["updated_at"],
   }));
