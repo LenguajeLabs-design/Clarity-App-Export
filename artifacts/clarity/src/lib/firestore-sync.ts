@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDocs,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -108,4 +109,32 @@ export async function saveClarityRecords(
     });
     await batch.commit();
   }
+}
+
+/**
+ * Make one device's local collection the cloud source of truth. Existing
+ * cloud-only records become tombstones instead of resurfacing on another
+ * device, while the phone's own records keep the same promotion timestamp.
+ */
+export async function replaceClarityRecords(
+  userId: string,
+  recordEntries: Array<{ record: CapturedItem | Project; kind: SyncKind }>,
+  clientUpdatedAtOverride: string,
+): Promise<void> {
+  const records = collectionFor(userId);
+  if (!records) throw new Error("Firebase is not configured");
+
+  const existing = await getDocs(records);
+  const localIds = new Set(recordEntries.map(({ record }) => record.id));
+  const tombstones = existing.docs
+    .filter((entry) => !localIds.has(entry.id))
+    .map((entry) => {
+      const record = recordFromDocument(entry.data());
+      return {
+        record: { ...record, isDeleted: true, updatedAt: clientUpdatedAtOverride } as CapturedItem | Project,
+        kind: record.kind === "project" ? "project" as const : "item" as const,
+      };
+    });
+
+  await saveClarityRecords(userId, [...recordEntries, ...tombstones], clientUpdatedAtOverride);
 }
