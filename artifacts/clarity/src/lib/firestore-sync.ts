@@ -47,7 +47,7 @@ function recordFromDocument(data: DocumentData): SyncRecord {
 
 export function subscribeToClarity(
   userId: string,
-  onData: (data: { items: CapturedItem[]; projects: Project[] }) => void,
+  onData: (data: { items: CapturedItem[]; projects: Project[] }, metadata: { fromCache: boolean; hasPendingWrites: boolean }) => void,
   onError: (error: Error) => void,
 ): () => void {
   const records = collectionFor(userId);
@@ -55,7 +55,7 @@ export function subscribeToClarity(
     onError(new Error("Firebase is not configured"));
     return () => undefined;
   }
-  return onSnapshot(records, (snapshot) => {
+  return onSnapshot(records, { includeMetadataChanges: true }, (snapshot) => {
     const items: CapturedItem[] = [];
     const projects: Project[] = [];
     snapshot.docs.forEach((entry) => {
@@ -63,7 +63,7 @@ export function subscribeToClarity(
       if (record.kind === "project") projects.push(record as Project);
       else items.push(record as CapturedItem);
     });
-    onData({ items, projects });
+    onData({ items, projects }, snapshot.metadata);
   }, (error) => onError(error));
 }
 

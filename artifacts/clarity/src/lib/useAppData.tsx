@@ -1,9 +1,11 @@
-import { createContext, useContext, useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useLocalStorage } from "./use-local-storage";
 import { CapturedItem, Project, UserSettings, AppData } from "./types";
 import { v4 as uuidv4 } from "uuid";
 import { useSyncStatus } from "./useSyncStatus";
 import { replaceClarityRecords, saveClarityRecord, saveClarityRecords, subscribeToClarity } from "./firestore-sync";
+import { parseBackup } from "./backup";
+import { mergeByTimestamp, recordsToUpload } from "./sync-merge";
 
 export const BLANK_ITEM = (text: string): CapturedItem => ({
   id: uuidv4(),
@@ -35,34 +37,6 @@ function touchModified() {
   }
 }
 
-function recordTime(record: { createdAt: string; updatedAt?: string }): number {
-  const time = Date.parse(record.updatedAt ?? record.createdAt);
-  return Number.isNaN(time) ? 0 : time;
-}
-
-function mergeByTimestamp<T extends { id: string; createdAt: string; updatedAt?: string }>(
-  local: T[],
-  remote: T[],
-): T[] {
-  const byId = new Map(local.map((record) => [record.id, record]));
-  for (const candidate of remote) {
-    const current = byId.get(candidate.id);
-    if (!current || recordTime(candidate) >= recordTime(current)) byId.set(candidate.id, candidate);
-  }
-  return [...byId.values()];
-}
-
-function recordsToUpload<T extends { id: string; createdAt: string; updatedAt?: string }>(
-  local: T[],
-  remote: T[],
-): T[] {
-  const remoteById = new Map(remote.map((record) => [record.id, record]));
-  return local.filter((record) => {
-    const remoteRecord = remoteById.get(record.id);
-    return !remoteRecord || recordTime(record) >= recordTime(remoteRecord);
-  });
-}
-
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useLocalStorage<CapturedItem[]>("clarity_items", []);
   const [projects, setProjects] = useLocalStorage<Project[]>("clarity_projects", []);
@@ -73,7 +47,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     theme: "auto",
   });
 
-  const { userId, setSyncing, setSynced, setSyncError } = useSyncStatus();
+  const { userId, status, setSyncing, setSynced, setSyncError } = useSyncStatus();
+  const [loadedForUserId, setLoadedForUserId] = useState<string | null>(null);
+  const cloudReady = Boolean(userId && loadedForUserId === userId && status === "synced");
   const itemsRef = useRef(items);
   const projectsRef = useRef(projects);
 
@@ -82,10 +58,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!userId) return;
-    let firstSnapshot = true;
+    let firstServerSnapshot = true;
+    let initialUploadPending = false;
+    let cancelled = false;
+    setLoadedForUserId(null);
     setSyncing();
 
-    const unsubscribe = subscribeToClarity(userId, (remote) => {
+    const unsubscribe = subscribeToClarity(userId, (remote, metadata) => {
       const localItems = itemsRef.current;
       const localProjects = projectsRef.current;
       const mergedItems = mergeByTimestamp(localItems, remote.items);
@@ -95,26 +74,40 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setItems(mergedItems);
       setProjects(mergedProjects);
 
-      if (firstSnapshot) {
-        firstSnapshot = false;
+      // A cached/empty initial snapshot is not evidence of the cloud dataset.
+      // Never republish this browser's records until the server has answered.
+      if (metadata.fromCache || metadata.hasPendingWrites) {
+        setSyncing();
+        return;
+      }
+      setLoadedForUserId(userId);
+      if (firstServerSnapshot) {
+        firstServerSnapshot = false;
         const uploads = [
           ...recordsToUpload(localItems, remote.items).map((record) => ({ record, kind: "item" as const })),
           ...recordsToUpload(localProjects, remote.projects).map((record) => ({ record, kind: "project" as const })),
         ];
         if (uploads.length > 0) {
-          void saveClarityRecords(userId, uploads).catch((error: unknown) => {
+          initialUploadPending = true;
+          setSyncing();
+          void saveClarityRecords(userId, uploads).then(() => {
+            initialUploadPending = false;
+            if (!cancelled) setSynced();
+          }).catch((error: unknown) => {
+            initialUploadPending = false;
             console.error("[Clarity] initial Firestore upload failed:", error);
-            setSyncError();
+            if (!cancelled) setSyncError();
           });
+          return;
         }
       }
-      setSynced();
+      if (!initialUploadPending) setSynced();
     }, (error) => {
       console.error("[Clarity] Firestore listener failed:", error);
       setSyncError();
     });
 
-    return unsubscribe;
+    return () => { cancelled = true; unsubscribe(); };
   }, [setSynced, setSyncError, setSyncing, userId]);
 
   function persist(record: CapturedItem | Project, kind: "item" | "project") {
@@ -214,12 +207,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     persist(updated, "project");
   };
 
-  const replaceAllData = (
+  const replaceAllData = async (
     newItems: CapturedItem[],
     newProjects: Project[],
     newSettings: UserSettings,
     syncedAt?: string,
   ) => {
+    if (!cloudReady) throw new Error("Wait for cloud sync to finish before importing. Nothing was imported.");
+    // Validate again at the mutation boundary, before touching any storage.
+    const validated = parseBackup({ items: newItems, projects: newProjects, settings: newSettings });
+    newItems = validated.items;
+    newProjects = validated.projects;
+    newSettings = validated.settings;
     itemsRef.current = newItems;
     projectsRef.current = newProjects;
     setItems(newItems);
@@ -231,15 +230,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       // Local metadata is non-critical.
     }
     if (userId) {
-      void saveClarityRecords(userId, [
-        ...newItems.map((record) => ({ record, kind: "item" as const })),
-        ...newProjects.map((record) => ({ record, kind: "project" as const })),
-      ]).catch(setSyncError);
+      setSyncing();
+      try {
+        await saveClarityRecords(userId, [
+          ...newItems.map((record) => ({ record, kind: "item" as const })),
+          ...newProjects.map((record) => ({ record, kind: "project" as const })),
+        ]);
+        setSynced();
+      } catch {
+        setSyncError();
+        throw new Error("Data was imported into this browser, but cloud sync did not finish. Keep your recovery backup and check your connection.");
+      }
     }
   };
 
   async function promoteCurrentDeviceData(): Promise<void> {
     if (!userId) throw new Error("Sign in to upload this device's data.");
+    if (!cloudReady || (itemsRef.current.length === 0 && projectsRef.current.length === 0)) {
+      throw new Error("Recovery needs a nonempty device copy and completed cloud sync. No recovery changes were made.");
+    }
     const promotionTime = new Date().toISOString();
     setSyncing();
     try {
@@ -259,6 +268,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       items,
       projects,
       settings,
+      cloudReady,
       addItem,
       addItemsBatch,
       addItemsBatchStructured,

@@ -4,7 +4,7 @@ import { useAppData } from "@/lib/useAppData";
 import { useSyncStatus } from "@/lib/useSyncStatus";
 import { Link, useLocation } from "wouter";
 import { PenLine, Cloud, CloudOff, Loader2, AlertCircle } from "lucide-react";
-import appIcon from "/clarity-ripple-v3.svg";
+const appIcon = `${import.meta.env.BASE_URL}clarity-ripple-v3.svg`;
 
 /**
  * Shows the status of the Firebase sync system.

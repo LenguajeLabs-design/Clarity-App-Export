@@ -49,3 +49,9 @@ Thumbs.db
 .local/
 
 attached_assets/*.json
+
+# Local configuration and personal backups
+.env
+.env.*
+!.env.example
+clarity-backup-*.json

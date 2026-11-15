@@ -60,6 +60,7 @@ export interface AppData {
   items: CapturedItem[];
   projects: Project[];
   settings: UserSettings;
+  cloudReady: boolean;
   addItem: (text: string) => void;
   addItemsBatch: (texts: string[]) => void;
   addItemsBatchStructured: (structured: Array<{
@@ -77,6 +78,6 @@ export interface AppData {
   /** Replace the entire local dataset at once (used after import/device link).
    *  Pass syncedAt so clarity_last_modified reflects when the remote data was
    *  last modified, not the moment of replacement. */
-  replaceAllData: (items: CapturedItem[], projects: Project[], settings: UserSettings, syncedAt?: string) => void;
+  replaceAllData: (items: CapturedItem[], projects: Project[], settings: UserSettings, syncedAt?: string) => Promise<void>;
   promoteCurrentDeviceData: () => Promise<void>;
 }

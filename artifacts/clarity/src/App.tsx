@@ -1,4 +1,5 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
+import { useBrowserLocation } from "wouter/use-browser-location";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SyncStatusProvider } from "@/lib/useSyncStatus";
@@ -19,6 +20,12 @@ import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
+
+function usePageLocation(): ReturnType<typeof useBrowserLocation> {
+  const [location, navigate] = useBrowserLocation();
+  // GitHub serves physical route directories with a trailing slash.
+  return [location.replace(/\/+$/, "") || "/", navigate];
+}
 
 function Router() {
   return (
@@ -47,7 +54,7 @@ function App() {
             <AppDataProvider>
                 <ThemeSync />
                 <TooltipProvider>
-                  <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                  <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")} hook={usePageLocation}>
                     <Router />
                   </WouterRouter>
                   <Toaster />
